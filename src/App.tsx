@@ -17,6 +17,11 @@ import { Skills } from './pages/Skills';
 import { Cron } from './pages/Cron';
 import { Settings } from './pages/Settings';
 import { Setup } from './pages/Setup';
+import { Amazon } from './pages/Amazon';
+import { ChatMode } from './pages/Amazon/ChatMode';
+import { FormMode } from './pages/Amazon/FormMode';
+import { Tracker } from './pages/Amazon/Tracker';
+import { History } from './pages/Amazon/History';
 import { useSettingsStore } from './stores/settings';
 import { useGatewayStore } from './stores/gateway';
 import { useProviderStore } from './stores/providers';
@@ -178,6 +183,11 @@ function App() {
             <Route path="/skills" element={<Skills />} />
             <Route path="/cron" element={<Cron />} />
             <Route path="/settings/*" element={<Settings />} />
+            <Route path="/amazon" element={<Amazon />} />
+            <Route path="/amazon/chat" element={<ChatMode />} />
+            <Route path="/amazon/form" element={<FormMode />} />
+            <Route path="/amazon/tracker" element={<Tracker />} />
+            <Route path="/amazon/history" element={<History />} />
           </Route>
         </Routes>
 
