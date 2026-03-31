@@ -134,11 +134,17 @@ export interface GatewayChatState {
   reset: () => void
 }
 
-export function useGatewayChat(): GatewayChatState {
+export interface GatewayChatOptions {
+  systemPrompt?: string
+}
+
+export function useGatewayChat(options?: GatewayChatOptions): GatewayChatState {
   const sessionKeyRef = useRef(`amazon-chat:${Date.now()}`)
   const [messages, setMessages] = useState<GatewayChatMessage[]>([])
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Track whether the system prompt has been injected for this session
+  const systemInjectedRef = useRef(false)
 
   const send = useCallback(async (text: string): Promise<string | null> => {
     const { rpc } = useGatewayStore.getState()
@@ -149,6 +155,22 @@ export function useGatewayChat(): GatewayChatState {
     setMessages((prev) => [...prev, { role: 'user', content: text }])
 
     try {
+      // On the very first user message, silently prepend the system prompt so the
+      // AI understands its role without cluttering the visible conversation.
+      if (options?.systemPrompt && !systemInjectedRef.current) {
+        systemInjectedRef.current = true
+        const initBaseline = await sendAndGetBaseline(rpc, sessionKeyRef.current)
+        await rpc('chat.send', {
+          sessionKey: sessionKeyRef.current,
+          message: options.systemPrompt,
+          deliver: false,
+          idempotencyKey: crypto.randomUUID(),
+        })
+        // Wait for the AI to acknowledge the system context before sending the
+        // actual user message. This keeps the conversation coherent.
+        await pollForReply(rpc, sessionKeyRef.current, initBaseline, 60000)
+      }
+
       const baselineCount = await sendAndGetBaseline(rpc, sessionKeyRef.current)
 
       await rpc('chat.send', {
@@ -172,10 +194,11 @@ export function useGatewayChat(): GatewayChatState {
     } finally {
       setSending(false)
     }
-  }, [])
+  }, [options?.systemPrompt])
 
   const reset = useCallback(() => {
     sessionKeyRef.current = `amazon-chat:${Date.now()}`
+    systemInjectedRef.current = false
     setMessages([])
     setError(null)
   }, [])
