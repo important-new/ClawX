@@ -1,6 +1,7 @@
 /**
- * Amazon Selection Assistant — MCP server & custom skill configuration store.
- * Persisted to localStorage under "amazon-settings-store".
+ * Amazon Selection Assistant — MCP server configuration store.
+ * Only MCP server config is persisted here (localStorage "amazon-settings-store").
+ * Skill metadata is read live from ~/.openclaw/skills/ via IPC.
  */
 import { create } from 'zustand'
 
@@ -26,45 +27,43 @@ export interface McpServer {
   enabled: boolean
 }
 
-export interface CustomSkill {
-  id: string
+/** Skill metadata parsed from SKILL.md frontmatter (read-only, from IPC) */
+export interface SkillMeta {
+  slug: string
   name: string
+  version: string
   description: string
-  /** Keywords that activate this skill in chat mode */
-  triggers: string[]
-  /** System-level instruction injected when skill is active */
-  prompt: string
-  enabled: boolean
+  author: string
+  extra: Record<string, string>
+  /** Absolute path on disk */
+  path: string
+  /** Directory ctime (used as install timestamp) */
+  installedAt?: number
 }
 
 interface AmazonSettingsState {
   mcpServers: McpServer[]
-  customSkills: CustomSkill[]
 
   // MCP server actions
   addMcpServer: (server: Omit<McpServer, 'id'>) => void
   updateMcpServer: (id: string, updates: Partial<Omit<McpServer, 'id'>>) => void
   removeMcpServer: (id: string) => void
   toggleMcpServer: (id: string) => void
-
-  // Custom skill actions
-  addCustomSkill: (skill: Omit<CustomSkill, 'id'>) => void
-  updateCustomSkill: (id: string, updates: Partial<Omit<CustomSkill, 'id'>>) => void
-  removeCustomSkill: (id: string) => void
-  toggleCustomSkill: (id: string) => void
 }
 
 // ─── Persistence helpers ───────────────────────────────────────────────────────
 
 const STORE_KEY = 'amazon-settings-store'
 
-type PersistedState = Pick<AmazonSettingsState, 'mcpServers' | 'customSkills'>
+type PersistedState = Pick<AmazonSettingsState, 'mcpServers'>
 
 function load(): PersistedState | null {
   try {
     const raw = localStorage.getItem(STORE_KEY)
     if (!raw) return null
-    return JSON.parse(raw) as PersistedState
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    // Migrate: old store may have customSkills field — just ignore it
+    return { mcpServers: (parsed.mcpServers as McpServer[]) ?? [] }
   } catch {
     return null
   }
@@ -86,58 +85,29 @@ const persisted = load()
 
 export const useAmazonSettingsStore = create<AmazonSettingsState>((set, get) => ({
   mcpServers: persisted?.mcpServers ?? [],
-  customSkills: persisted?.customSkills ?? [],
-
-  // ── MCP servers ────────────────────────────────────────────────────────────
 
   addMcpServer(server) {
     const next = [...get().mcpServers, { ...server, id: uid() }]
     set({ mcpServers: next })
-    persist({ mcpServers: next, customSkills: get().customSkills })
+    persist({ mcpServers: next })
   },
 
   updateMcpServer(id, updates) {
     const next = get().mcpServers.map((s) => s.id === id ? { ...s, ...updates } : s)
     set({ mcpServers: next })
-    persist({ mcpServers: next, customSkills: get().customSkills })
+    persist({ mcpServers: next })
   },
 
   removeMcpServer(id) {
     const next = get().mcpServers.filter((s) => s.id !== id)
     set({ mcpServers: next })
-    persist({ mcpServers: next, customSkills: get().customSkills })
+    persist({ mcpServers: next })
   },
 
   toggleMcpServer(id) {
     const next = get().mcpServers.map((s) => s.id === id ? { ...s, enabled: !s.enabled } : s)
     set({ mcpServers: next })
-    persist({ mcpServers: next, customSkills: get().customSkills })
-  },
-
-  // ── Custom skills ──────────────────────────────────────────────────────────
-
-  addCustomSkill(skill) {
-    const next = [...get().customSkills, { ...skill, id: uid() }]
-    set({ customSkills: next })
-    persist({ mcpServers: get().mcpServers, customSkills: next })
-  },
-
-  updateCustomSkill(id, updates) {
-    const next = get().customSkills.map((s) => s.id === id ? { ...s, ...updates } : s)
-    set({ customSkills: next })
-    persist({ mcpServers: get().mcpServers, customSkills: next })
-  },
-
-  removeCustomSkill(id) {
-    const next = get().customSkills.filter((s) => s.id !== id)
-    set({ customSkills: next })
-    persist({ mcpServers: get().mcpServers, customSkills: next })
-  },
-
-  toggleCustomSkill(id) {
-    const next = get().customSkills.map((s) => s.id === id ? { ...s, enabled: !s.enabled } : s)
-    set({ customSkills: next })
-    persist({ mcpServers: get().mcpServers, customSkills: next })
+    persist({ mcpServers: next })
   },
 }))
 

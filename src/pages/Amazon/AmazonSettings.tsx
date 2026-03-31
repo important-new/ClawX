@@ -1,12 +1,12 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Plus, Trash2, Edit2, Check, X, ChevronDown,
-  Server, Zap, AlertCircle, CheckCircle2, ExternalLink,
+  Server, Zap, AlertCircle, CheckCircle2, FolderOpen, RefreshCw,
+  Package, Calendar,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { invokeIpc } from '@/lib/api-client'
@@ -16,7 +16,7 @@ import {
   SELLERSPRITE_TEMPLATE,
   type McpServer,
   type McpTransportType,
-  type CustomSkill,
+  type SkillMeta,
   type McpServerHeader,
 } from './amazonSettingsStore'
 
@@ -39,24 +39,6 @@ const EMPTY_MCP_FORM: McpFormState = {
 
 function mcpToForm(s: McpServer): McpFormState {
   return { name: s.name, description: s.description, type: s.type, url: s.url, command: s.command, headers: s.headers, enabled: s.enabled }
-}
-
-// ─── Skill form ───────────────────────────────────────────────────────────────
-
-interface SkillFormState {
-  name: string
-  description: string
-  triggers: string
-  prompt: string
-  enabled: boolean
-}
-
-const EMPTY_SKILL_FORM: SkillFormState = {
-  name: '', description: '', triggers: '', prompt: '', enabled: true,
-}
-
-function skillToForm(s: CustomSkill): SkillFormState {
-  return { name: s.name, description: s.description, triggers: s.triggers.join('，'), prompt: s.prompt, enabled: s.enabled }
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -190,69 +172,13 @@ function McpForm({
   )
 }
 
-// ─── Skill form panel ─────────────────────────────────────────────────────────
-
-function SkillForm({
-  initial,
-  onSave,
-  onCancel,
-}: {
-  initial: SkillFormState
-  onSave: (f: SkillFormState) => void
-  onCancel: () => void
-}) {
-  const [form, setForm] = useState<SkillFormState>(initial)
-  const set = (patch: Partial<SkillFormState>) => setForm((f) => ({ ...f, ...patch }))
-  const valid = form.name.trim() && form.prompt.trim()
-
-  return (
-    <div className="rounded-xl border bg-muted/30 p-4 space-y-3">
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="text-xs text-muted-foreground mb-1 block">Skill 名称 <span className="text-red-500">*</span></label>
-          <Input value={form.name} onChange={(e) => set({ name: e.target.value })} placeholder="如：竞品深度分析" className="h-8 text-sm" />
-        </div>
-        <div>
-          <label className="text-xs text-muted-foreground mb-1 block">描述</label>
-          <Input value={form.description} onChange={(e) => set({ description: e.target.value })} placeholder="简短说明" className="h-8 text-sm" />
-        </div>
-      </div>
-
-      <div>
-        <label className="text-xs text-muted-foreground mb-1 block">触发关键词（逗号分隔）</label>
-        <Input value={form.triggers} onChange={(e) => set({ triggers: e.target.value })} placeholder="竞品分析，competitor analysis" className="h-8 text-sm" />
-      </div>
-
-      <div>
-        <label className="text-xs text-muted-foreground mb-1 block">提示词模板 <span className="text-red-500">*</span></label>
-        <Textarea
-          value={form.prompt}
-          onChange={(e) => set({ prompt: e.target.value })}
-          placeholder="当用户提到此 Skill 时，AI 会遵循此提示词执行任务。支持 {productName}、{mode}、{market} 占位符。"
-          className="min-h-[80px] text-sm resize-none"
-        />
-      </div>
-
-      <div className="flex justify-end gap-2 pt-1">
-        <Button size="sm" variant="outline" onClick={onCancel}>取消</Button>
-        <Button size="sm" onClick={() => valid && onSave(form)} disabled={!valid}>
-          <Check className="h-3.5 w-3.5 mr-1" />保存
-        </Button>
-      </div>
-    </div>
-  )
-}
-
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 type TabKey = 'mcp' | 'skills'
 
 export function AmazonSettings() {
   const navigate = useNavigate()
-  const {
-    mcpServers, addMcpServer, updateMcpServer, removeMcpServer, toggleMcpServer,
-    customSkills, addCustomSkill, updateCustomSkill, removeCustomSkill, toggleCustomSkill,
-  } = useAmazonSettingsStore()
+  const { mcpServers, addMcpServer, updateMcpServer, removeMcpServer, toggleMcpServer } = useAmazonSettingsStore()
 
   const [tab, setTab] = useState<TabKey>('mcp')
   const [applying, setApplying] = useState(false)
@@ -264,11 +190,29 @@ export function AmazonSettings() {
   const [mcpFormInitial, setMcpFormInitial] = useState<McpFormState>(EMPTY_MCP_FORM)
   const [deleteConfirmMcpId, setDeleteConfirmMcpId] = useState<string | null>(null)
 
-  // Skill editing state
-  const [showSkillForm, setShowSkillForm] = useState(false)
-  const [editingSkillId, setEditingSkillId] = useState<string | null>(null)
-  const [skillFormInitial, setSkillFormInitial] = useState<SkillFormState>(EMPTY_SKILL_FORM)
-  const [deleteConfirmSkillId, setDeleteConfirmSkillId] = useState<string | null>(null)
+  // Skill state — loaded from disk via IPC
+  const [skills, setSkills] = useState<SkillMeta[]>([])
+  const [skillsLoading, setSkillsLoading] = useState(false)
+  const [installingSkill, setInstallingSkill] = useState(false)
+  const [deleteConfirmSkillSlug, setDeleteConfirmSkillSlug] = useState<string | null>(null)
+  const [previewMeta, setPreviewMeta] = useState<{ meta: SkillMeta; srcPath: string } | null>(null)
+
+  // Load installed skills when tab becomes active
+  useEffect(() => {
+    if (tab === 'skills') loadSkills()
+  }, [tab])
+
+  const loadSkills = async () => {
+    setSkillsLoading(true)
+    try {
+      const result = await invokeIpc<{ success: boolean; skills: SkillMeta[]; error?: string }>(
+        'amazon:listUserSkills',
+      )
+      if (result?.success) setSkills(result.skills)
+    } finally {
+      setSkillsLoading(false)
+    }
+  }
 
   // ── MCP actions ─────────────────────────────────────────────────────────────
 
@@ -305,30 +249,57 @@ export function AmazonSettings() {
 
   // ── Skill actions ────────────────────────────────────────────────────────────
 
-  const openAddSkill = () => {
-    setEditingSkillId(null)
-    setSkillFormInitial(EMPTY_SKILL_FORM)
-    setShowSkillForm(true)
-  }
+  const handleSelectSkillDir = async () => {
+    const result = await invokeIpc<{ canceled: boolean; filePaths: string[] }>(
+      'amazon:selectSkillDir',
+    )
+    if (result?.canceled || !result?.filePaths?.length) return
 
-  const openEditSkill = (skill: CustomSkill) => {
-    setEditingSkillId(skill.id)
-    setSkillFormInitial(skillToForm(skill))
-    setShowSkillForm(true)
-  }
-
-  const handleSaveSkill = useCallback((form: SkillFormState) => {
-    const triggers = form.triggers.split(/[，,、]/).map((t) => t.trim()).filter(Boolean)
-    if (editingSkillId) {
-      updateCustomSkill(editingSkillId, { ...form, triggers })
-      toast.success('Skill 已更新')
-    } else {
-      addCustomSkill({ ...form, triggers })
-      toast.success(`已添加 Skill：${form.name}`)
+    const srcPath = result.filePaths[0]
+    const metaResult = await invokeIpc<{ success: boolean; meta: SkillMeta; error?: string }>(
+      'amazon:readSkillMeta',
+      srcPath,
+    )
+    if (!metaResult?.success) {
+      toast.error(metaResult?.error ?? '读取 SKILL.md 失败，请确认目录中存在该文件')
+      return
     }
-    setShowSkillForm(false)
-    setEditingSkillId(null)
-  }, [editingSkillId, addCustomSkill, updateCustomSkill])
+    setPreviewMeta({ meta: metaResult.meta, srcPath })
+  }
+
+  const handleConfirmInstall = async () => {
+    if (!previewMeta) return
+    setInstallingSkill(true)
+    try {
+      const result = await invokeIpc<{ success: boolean; slug: string; error?: string }>(
+        'amazon:installSkillFromPath',
+        previewMeta.srcPath,
+      )
+      if (result?.success) {
+        toast.success(`Skill "${previewMeta.meta.name}" 安装成功，Gateway 正在重载`)
+        setPreviewMeta(null)
+        await loadSkills()
+      } else {
+        toast.error(result?.error ?? '安装失败')
+      }
+    } finally {
+      setInstallingSkill(false)
+    }
+  }
+
+  const handleRemoveSkill = async (slug: string) => {
+    const result = await invokeIpc<{ success: boolean; error?: string }>(
+      'amazon:removeSkill',
+      slug,
+    )
+    if (result?.success) {
+      toast.success(`Skill "${slug}" 已移除，Gateway 正在重载`)
+      setDeleteConfirmSkillSlug(null)
+      await loadSkills()
+    } else {
+      toast.error(result?.error ?? '移除失败')
+    }
+  }
 
   // ── Apply to openclaw.json ───────────────────────────────────────────────────
 
@@ -535,90 +506,98 @@ export function AmazonSettings() {
           <div className="flex items-start gap-2.5 rounded-lg bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 p-3">
             <Zap className="h-4 w-4 text-purple-600 dark:text-purple-400 shrink-0 mt-0.5" />
             <div className="text-xs text-purple-700 dark:text-purple-300 space-y-0.5">
-              <p>自定义 Skill 是用于选品助手 AI 对话的提示词模板。AI 检测到触发关键词时自动激活。</p>
-              <p>提示词中可使用 <code className="font-mono bg-purple-100 dark:bg-purple-900/50 px-1 rounded">{'{productName}'}</code>、<code className="font-mono bg-purple-100 dark:bg-purple-900/50 px-1 rounded">{'{mode}'}</code>、<code className="font-mono bg-purple-100 dark:bg-purple-900/50 px-1 rounded">{'{market}'}</code> 占位符。</p>
+              <p>Skill 目录将复制到 <code className="font-mono bg-purple-100 dark:bg-purple-900/50 px-1 rounded">~/.openclaw/skills/</code>，安装后自动触发 Gateway 热重载。</p>
+              <p>每个 Skill 目录必须包含 <code className="font-mono bg-purple-100 dark:bg-purple-900/50 px-1 rounded">SKILL.md</code>（含 YAML frontmatter：name / version / description）。</p>
             </div>
           </div>
 
-          {/* Skill list */}
-          <div className="space-y-2">
-            {customSkills.map((skill) => (
-              <div key={skill.id}>
-                {editingSkillId === skill.id && showSkillForm ? (
-                  <SkillForm
-                    initial={skillFormInitial}
-                    onSave={handleSaveSkill}
-                    onCancel={() => { setShowSkillForm(false); setEditingSkillId(null) }}
-                  />
-                ) : (
-                  <div className={cn(
-                    'rounded-xl border bg-card px-4 py-3 space-y-1.5 transition-colors',
-                    !skill.enabled && 'opacity-50'
-                  )}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-sm">{skill.name}</span>
-                          {skill.description && (
-                            <span className="text-xs text-muted-foreground truncate">{skill.description}</span>
-                          )}
-                        </div>
-                        {skill.triggers.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {skill.triggers.map((t) => (
-                              <span key={t} className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground">{t}</span>
-                            ))}
-                          </div>
-                        )}
-                        <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2">{skill.prompt}</p>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0 mt-0.5">
-                        <Toggle checked={skill.enabled} onChange={() => toggleCustomSkill(skill.id)} />
-                        <button onClick={() => openEditSkill(skill)} className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
-                          <Edit2 className="h-3.5 w-3.5" />
-                        </button>
-                        {deleteConfirmSkillId === skill.id ? (
-                          <div className="flex items-center gap-1">
-                            <span className="text-xs text-muted-foreground">确认?</span>
-                            <button onClick={() => { removeCustomSkill(skill.id); setDeleteConfirmSkillId(null) }} className="text-xs text-red-500 hover:underline">是</button>
-                            <button onClick={() => setDeleteConfirmSkillId(null)} className="text-xs text-muted-foreground hover:underline">否</button>
-                          </div>
-                        ) : (
-                          <button onClick={() => setDeleteConfirmSkillId(skill.id)} className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-red-500 transition-colors">
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+          {/* Preview panel — shown after directory selection, before install */}
+          {previewMeta && (
+            <div className="rounded-xl border-2 border-primary/30 bg-primary/5 p-4 space-y-3">
+              <p className="text-xs font-semibold text-primary uppercase tracking-wider">安装预览</p>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <Package className="h-4 w-4 text-primary" />
+                  <span className="font-medium text-sm">{previewMeta.meta.name}</span>
+                  <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded font-mono">{previewMeta.meta.version}</span>
+                </div>
+                {previewMeta.meta.description && (
+                  <p className="text-xs text-muted-foreground ml-6">{previewMeta.meta.description}</p>
                 )}
+                {previewMeta.meta.author && (
+                  <p className="text-xs text-muted-foreground ml-6">作者：{previewMeta.meta.author}</p>
+                )}
+                <p className="text-[11px] text-muted-foreground font-mono ml-6 truncate">{previewMeta.srcPath}</p>
               </div>
-            ))}
-          </div>
-
-          {/* Add form (new) */}
-          {showSkillForm && !editingSkillId && (
-            <SkillForm
-              initial={skillFormInitial}
-              onSave={handleSaveSkill}
-              onCancel={() => setShowSkillForm(false)}
-            />
+              <div className="flex justify-end gap-2">
+                <Button size="sm" variant="outline" onClick={() => setPreviewMeta(null)}>取消</Button>
+                <Button size="sm" onClick={handleConfirmInstall} disabled={installingSkill}>
+                  <Check className="h-3.5 w-3.5 mr-1" />
+                  {installingSkill ? '安装中...' : '确认安装'}
+                </Button>
+              </div>
+            </div>
           )}
 
-          {/* Add button */}
-          {!showSkillForm && (
-            <button
-              onClick={openAddSkill}
-              className="w-full flex items-center justify-center gap-2 rounded-xl border border-dashed py-2.5 text-sm text-muted-foreground hover:text-foreground hover:border-muted-foreground/50 transition-colors"
-            >
-              <Plus className="h-4 w-4" />添加自定义 Skill
-            </button>
+          {/* Installed skill list */}
+          {skillsLoading ? (
+            <div className="text-center py-8 text-sm text-muted-foreground">加载中...</div>
+          ) : skills.length === 0 ? (
+            <div className="text-center py-8 text-sm text-muted-foreground">
+              尚未安装任何 Skill。点击下方"选择 Skill 目录"导入你的脚本。
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {skills.map((skill) => (
+                <div key={skill.slug} className="flex items-center gap-3 rounded-xl border bg-card px-4 py-3">
+                  <div className="w-8 h-8 rounded-lg bg-purple-100 dark:bg-purple-900/40 flex items-center justify-center shrink-0">
+                    <Package className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium text-sm">{skill.name}</span>
+                      <span className="text-[10px] font-mono bg-muted px-1.5 py-0.5 rounded text-muted-foreground">{skill.version}</span>
+                      <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground">{skill.slug}</span>
+                    </div>
+                    {skill.description && (
+                      <p className="text-xs text-muted-foreground truncate mt-0.5">{skill.description}</p>
+                    )}
+                    {skill.installedAt && (
+                      <div className="flex items-center gap-1 mt-0.5 text-[10px] text-muted-foreground/60">
+                        <Calendar className="h-2.5 w-2.5" />
+                        {new Date(skill.installedAt).toLocaleDateString('zh-CN')}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {deleteConfirmSkillSlug === skill.slug ? (
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-muted-foreground">确认移除?</span>
+                        <button onClick={() => handleRemoveSkill(skill.slug)} className="text-xs text-red-500 hover:underline">是</button>
+                        <button onClick={() => setDeleteConfirmSkillSlug(null)} className="text-xs text-muted-foreground hover:underline">否</button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setDeleteConfirmSkillSlug(skill.slug)}
+                        className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-red-500 transition-colors"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
 
-          {/* Docs link */}
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground pt-1">
-            <ExternalLink className="h-3 w-3" />
-            <span>自定义 Skill 保存在本地，不影响 Gateway 配置，无需重启。</span>
+          {/* Action row */}
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handleSelectSkillDir} className="gap-1.5">
+              <FolderOpen className="h-3.5 w-3.5" />选择 Skill 目录
+            </Button>
+            <Button variant="ghost" size="sm" onClick={loadSkills} disabled={skillsLoading} className="gap-1.5 text-muted-foreground">
+              <RefreshCw className={cn('h-3.5 w-3.5', skillsLoading && 'animate-spin')} />刷新
+            </Button>
           </div>
         </div>
       )}
