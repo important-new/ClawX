@@ -126,7 +126,7 @@ export function registerIpcHandlers(
   registerSkillConfigHandlers();
 
   // Amazon selection assistant MCP config handlers
-  registerAmazonMcpHandlers();
+  registerAmazonMcpHandlers(gatewayManager);
 
   // Cron task handlers (proxy to Gateway RPC)
   registerCronHandlers(gatewayManager);
@@ -733,7 +733,7 @@ function registerSkillConfigHandlers(): void {
  * Writes the mcpServers block directly to ~/.openclaw/openclaw.json so that
  * the Gateway picks it up on next restart.
  */
-function registerAmazonMcpHandlers(): void {
+function registerAmazonMcpHandlers(gatewayManager: GatewayManager): void {
   ipcMain.handle('amazon:saveMcpConfig', async (_, mcpServers: Record<string, unknown>) => {
     try {
       const config = await readOpenClawConfig();
@@ -744,6 +744,10 @@ function registerAmazonMcpHandlers(): void {
       }
       await writeOpenClawConfig(config);
       logger.info('[amazon] Saved mcpServers config:', Object.keys(mcpServers));
+      // Trigger in-process config reload (SIGUSR1 on macOS/Linux, restart on Windows).
+      // This ensures the running Gateway picks up the new MCP servers without
+      // requiring the user to manually restart.
+      gatewayManager.debouncedReload();
       return { success: true };
     } catch (err) {
       logger.error('[amazon] Failed to save mcpServers config:', err);
