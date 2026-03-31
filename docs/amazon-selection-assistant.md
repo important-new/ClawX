@@ -17,7 +17,11 @@
   - [跟踪看板（Tracker）](#跟踪看板tracker)
   - [历史报告（History）](#历史报告history)
 - [Gateway AI 集成](#gateway-ai-集成)
+- [MCP 服务器配置](#mcp-服务器配置)
+- [自定义 Skill 管理](#自定义-skill-管理)
+- [数据备份与恢复](#数据备份与恢复)
 - [状态管理](#状态管理)
+- [IPC 通道一览](#ipc-通道一览)
 - [已知限制](#已知限制)
 
 ---
@@ -30,14 +34,17 @@
 |------|----------|
 | **对话模式** | 新手友好，AI 或引导式问答，逐步收集数据 |
 | **表单模式** | 结构化录入，批量数据粘贴，快速生成标准报告 |
-| **跟踪看板** | 监控候选产品，定期自动重评，掌握竞争态势变化 |
+| **跟踪看板** | 监控候选产品，定期手动重评，掌握竞争态势变化 |
 
 核心能力：
 - 五步评估模型：初选筛选 → 竞争分析 → 盈利核算 → 合规排查 → 试销方案
 - 支持四种运营模式：FBA 精铺 / FBA 铺货 / FBM 精铺 / FBM 铺货
 - 数据置信度分级：高（必填数据齐全）/ 中（部分数据）/ 低（无实际数据）
 - Gateway AI 集成：真实 AI 对话分析 + 报告深度解读（需 gateway 在线）
+- Skill 专项分析：调用已安装的 OpenClaw Skill 对产品进行深度分析
+- MCP 服务器配置：通过 UI 配置卖家精灵等数据源，写入 `~/.openclaw/openclaw.json`
 - 历史记录：筛选、多产品横向对比、Markdown 导出
+- 数据备份/恢复：导出全量数据为 JSON，重装后一键恢复
 
 ---
 
@@ -49,6 +56,7 @@
 /amazon/form         表单模式
 /amazon/tracker      跟踪看板
 /amazon/history      历史报告
+/amazon/settings     配置页（MCP 服务器 / Skill 管理 / 数据备份）
 ```
 
 ---
@@ -62,8 +70,10 @@ src/pages/Amazon/
 ├── FormMode.tsx               表单模式（三步向导）
 ├── Tracker.tsx                跟踪看板
 ├── History.tsx                历史报告（筛选/对比/删除/导出）
+├── AmazonSettings.tsx         配置页（MCP / Skill / 备份，三 Tab）
 ├── engine.ts                  五步分析引擎（确定性算法）
 ├── store.ts                   Zustand store（localStorage 持久化）
+├── amazonSettingsStore.ts     MCP 服务器配置 store（localStorage 持久化）
 ├── types.ts                   全局类型定义
 ├── components/
 │   ├── ModeCard.tsx           首页模式入口卡片
@@ -71,9 +81,14 @@ src/pages/Amazon/
 │   ├── VerdictBadge.tsx       结论/评分徽章
 │   ├── DataPanel.tsx          数据来源侧边面板
 │   ├── TrackerCard.tsx        跟踪产品卡片
-│   └── CompareTable.tsx       多产品横向对比表
+│   ├── CompareTable.tsx       多产品横向对比表
+│   └── SkillInvoker.tsx       Skill 调用面板（步骤3 / 对话模式）
 └── hooks/
-    └── useGatewayAI.ts        Gateway AI 集成 hooks
+    ├── useGatewayAI.ts        Gateway AI 集成 hooks
+    └── useInstalledSkills.ts  读取已安装 Skill 列表
+
+electron/main/
+└── ipc-amazon.ts              全部亚马逊 IPC handler（与 ClawX 核心隔离）
 ```
 
 ---
@@ -131,6 +146,36 @@ interface TrackedProduct {
   currentVerdict: Verdict
   scoreTrend: 'up' | 'down' | 'stable'
   history: TrackerHistoryEntry[]
+}
+```
+
+### McpServer（amazonSettingsStore）
+
+```typescript
+interface McpServer {
+  id: string
+  name: string
+  description: string
+  type: 'streamableHttp' | 'stdio'
+  url: string        // streamableHttp 模式
+  command: string    // stdio 模式
+  headers: McpServerHeader[]
+  enabled: boolean
+}
+```
+
+### SkillMeta（amazonSettingsStore）
+
+```typescript
+interface SkillMeta {
+  slug: string       // 目录名，作为唯一标识
+  name: string
+  version: string
+  description: string
+  author: string
+  extra: Record<string, string>  // SKILL.md 其他 frontmatter 字段
+  path: string       // ~/.openclaw/skills/<slug>/ 绝对路径
+  installedAt?: number
 }
 ```
 
@@ -213,9 +258,11 @@ greeting → confirm-mode → collect-data → confirm-analyze → analyzing →
 #### AI 模式（需 gateway 在线）
 
 - 消息通过 `useGatewayChat` 发送至真实 AI（独立 session）
+- 内置 system prompt：AI 自动以专业亚马逊选品顾问角色响应，熟悉四种运营模式和五步评估框架
 - AI 自由对话，不强制引导流程
 - 对话 ≥2 条后激活"基于此对话生成结构化报告"按钮
 - 用户确认产品名 + 模式后运行本地引擎生成报告
+- **Skill 选择器**：工具栏显示已安装 Skill 列表（下拉），选择后将调用提示词预填到输入框
 
 #### 添加到跟踪
 
@@ -235,13 +282,14 @@ greeting → confirm-mode → collect-data → confirm-analyze → analyzing →
 
 **步骤 2 — 数据录入**
 - 4 类数据卡片：搜索量/供需比（必填）、竞品评论分布（必填）、头程物流报价（可选）、IP 查询（可选）
-- 每张卡支持"粘贴数据"（内联 textarea）或"MCP 抓取"（标记模式）
+- 每张卡支持"粘贴数据"（内联 textarea）或"MCP 抓取"（标记模式，待真实接入）
 - 缺少必填项时显示警告，以低置信度模式继续
 
 **步骤 3 — 分析报告**
 - 进度条动画模拟五步分析过程
 - 展示完整 `ReportView`（含可展开的各步骤指标）
 - **AI 深度解读**：gateway 在线时可点击，发送报告摘要获取 AI 定性洞察
+- **Skill 专项分析**：gateway 在线且有已安装 Skill 时显示，选择 Skill 后发送携带产品上下文的调用提示词，结果展示于面板内
 - 可导出（复制 Markdown）、添加到跟踪
 
 ---
@@ -295,7 +343,7 @@ greeting → confirm-mode → collect-data → confirm-analyze → analyzing →
 
 ### useGatewayRequest
 
-单次请求，适用于一次性 AI 分析（FormMode 深度解读）：
+单次请求，适用于一次性 AI 分析（FormMode 深度解读、Skill 调用）：
 
 ```typescript
 const { request, loading, result, error, reset } = useGatewayRequest()
@@ -311,9 +359,10 @@ const reply = await request('请分析以下报告...')
 多轮对话，适用于 ChatMode AI 模式：
 
 ```typescript
-const { messages, send, sending, error, reset, sessionKey } = useGatewayChat()
+const { messages, send, sending, error, reset, sessionKey } = useGatewayChat({
+  systemPrompt: '...',  // 可选，首条消息前静默注入 system prompt
+})
 
-// messages 包含本地乐观更新的消息列表
 const reply = await send('我想评估便携挂烫机')
 ```
 
@@ -326,7 +375,7 @@ useGatewayRequest / useGatewayChat
     ↓ useGatewayStore.getState().rpc()
     ↓ invokeIpc('gateway:rpc', 'chat.send', params)
     ↓ Electron IPC → GatewayManager → WebSocket
-    ↓ OpenClaw Gateway → Claude AI
+    ↓ OpenClaw Gateway → Claude AI（+ 已注册 Skill 工具）
     ↓ 轮询 chat.history（每 1.8 秒，超时 90 秒）
     ↓ 返回最新 assistant 消息文本
 ```
@@ -335,9 +384,122 @@ useGatewayRequest / useGatewayChat
 
 ---
 
+## MCP 服务器配置
+
+**路由：** `/amazon/settings`（Tab: MCP 服务器）
+**Store：** `amazonSettingsStore.ts`，localStorage key `amazon-settings-store`
+
+### 配置流程
+
+1. 在 Settings 页面添加/编辑 MCP 服务器（支持 `streamableHttp` 和 `stdio` 两种传输类型）
+2. 点击"应用配置到 Gateway" → 调用 `amazon:saveMcpConfig`
+3. IPC handler 将 `mcpServers` 写入 `~/.openclaw/openclaw.json`
+4. 自动触发 Gateway 热重载（macOS/Linux: SIGUSR1；Windows: 完整重启）
+
+### 卖家精灵快速添加
+
+Settings 页面内置 SellerSprite 模板，填入 `secret-key` 后一键添加：
+
+```json
+{
+  "sellersprite-mcp": {
+    "type": "streamableHttp",
+    "url": "https://mcp.sellersprite.com/mcp",
+    "headers": { "secret-key": "<YOUR_KEY>" }
+  }
+}
+```
+
+### 配置持久化说明
+
+| 存储位置 | 内容 | 卸载后 |
+|----------|------|--------|
+| `localStorage amazon-settings-store` | UI 侧 McpServer 列表 | **丢失**（需备份） |
+| `~/.openclaw/openclaw.json` | 写入 Gateway 的 mcpServers | **保留** |
+
+---
+
+## 自定义 Skill 管理
+
+**路由：** `/amazon/settings`（Tab: 自定义 Skill）
+**IPC：** `electron/main/ipc-amazon.ts`
+
+### Skill 目录结构
+
+每个 Skill 是一个目录，必须包含 `SKILL.md`（YAML frontmatter）：
+
+```
+my-skill/
+├── SKILL.md          # 必须：包含 name/version/description/author
+└── ...               # 脚本文件
+```
+
+```markdown
+---
+slug: my-skill
+name: 竞品深度分析
+version: 1.0.0
+description: 基于 MCP 数据对竞品进行深度分析
+author: 你的名字
+---
+```
+
+### 安装流程
+
+1. 点击"选择 Skill 目录" → OS 原生目录选择对话框
+2. 自动读取并展示 `SKILL.md` 预览（名称/版本/描述/作者）
+3. 点击"确认安装" → 整个目录复制到 `~/.openclaw/skills/<slug>/`
+4. 自动触发 Gateway 热重载，Skill 立即对 AI 可用
+
+### Skill 调用（集成到分析流程）
+
+安装后，Skill 以两种方式集成到选品助手：
+
+| 入口 | 方式 |
+|------|------|
+| **表单模式步骤 3** | "Skill 专项分析"面板，选择 Skill 后构造包含产品上下文的提示词，通过 `useGatewayRequest` 发送，结果内嵌展示 |
+| **对话模式 AI 模式工具栏** | "Skills"下拉按钮，选择后将调用提示词预填到输入框，用户确认后发送 |
+
+调用提示词包含：产品名称、运营模式、目标市场、当前报告评分摘要。
+
+---
+
+## 数据备份与恢复
+
+**路由：** `/amazon/settings`（Tab: 数据备份）
+
+### 需要备份的数据
+
+| 数据 | 存储位置 | 卸载后 |
+|------|----------|--------|
+| 分析历史 + 跟踪产品 | `localStorage amazon-selection-store` | **丢失** |
+| MCP 服务器配置列表 | `localStorage amazon-settings-store` | **丢失** |
+| Gateway 配置（mcpServers） | `~/.openclaw/openclaw.json` | **保留** |
+| 已安装 Skill 文件 | `~/.openclaw/skills/` | **保留** |
+
+### 备份文件格式
+
+```json
+{
+  "version": 1,
+  "exportedAt": 1234567890,
+  "amazonStore": "{ \"sessions\": [...], \"trackedProducts\": [...] }",
+  "amazonSettingsStore": "{ \"mcpServers\": [...] }"
+}
+```
+
+### 恢复流程
+
+1. 重装 ClawX 后，进入 `/amazon/settings` → "数据备份" Tab
+2. 点击"选择备份文件并导入"
+3. 选择之前导出的 `.json` 文件
+4. 数据写入 localStorage 后，页面自动重载（3 秒倒计时）
+
+---
+
 ## 状态管理
 
-**文件：** `store.ts`
+### amazon-selection-store（store.ts）
 
 ```typescript
 interface AmazonStore {
@@ -352,14 +514,44 @@ interface AmazonStore {
 - **初始化：** 无持久数据时加载内置 MOCK 数据（4 个示例分析 + 3 个跟踪产品）
 - **跨页共享：** 所有页面通过 `useAmazonStore()` 访问同一 store
 
+### amazon-settings-store（amazonSettingsStore.ts）
+
+```typescript
+interface AmazonSettingsState {
+  mcpServers: McpServer[]
+  addMcpServer / updateMcpServer / removeMcpServer / toggleMcpServer
+}
+```
+
+- **持久化：** localStorage key `amazon-settings-store`
+- **Skill 数据**：不存 store，直接通过 `amazon:listUserSkills` IPC 实时读取文件系统
+
+---
+
+## IPC 通道一览
+
+全部亚马逊 IPC handler 集中在 `electron/main/ipc-amazon.ts`，channel 以 `amazon:` 为前缀：
+
+| Channel | 方向 | 说明 |
+|---------|------|------|
+| `amazon:saveMcpConfig` | Renderer → Main | 将 mcpServers 写入 openclaw.json，触发 Gateway 重载 |
+| `amazon:readMcpConfig` | Renderer → Main | 读取 openclaw.json 中的 mcpServers |
+| `amazon:selectSkillDir` | Renderer → Main | 显示 OS 目录选择对话框 |
+| `amazon:readSkillMeta` | Renderer → Main | 解析指定目录的 SKILL.md frontmatter |
+| `amazon:listUserSkills` | Renderer → Main | 列出 ~/.openclaw/skills/ 下所有已安装 Skill |
+| `amazon:installSkillFromPath` | Renderer → Main | 复制 Skill 目录到 skills dir，触发 Gateway 重载 |
+| `amazon:removeSkill` | Renderer → Main | 删除 ~/.openclaw/skills/<slug>/，触发 Gateway 重载 |
+| `amazon:exportBackup` | Renderer → Main | 显示保存对话框，将备份 JSON 写入文件 |
+| `amazon:importBackup` | Renderer → Main | 显示打开对话框，读取备份文件并返回数据 |
+
 ---
 
 ## 已知限制
 
 | 限制 | 说明 |
 |------|------|
-| MCP 抓取为标记模式 | "MCP 抓取"按钮仅标记数据已加载，未接入真实数据源 |
-| AI 模式无预设 system prompt | AI 不会自动扮演选品顾问角色，需用户在对话中引导 |
-| 引擎为确定性算法 | 非真实市场数据，评分仅供参考和演示 |
+| MCP 抓取为标记模式 | "MCP 抓取"按钮仅标记数据已加载，未接入真实 MCP 工具调用 |
+| 引擎为确定性算法 | 非真实市场数据，评分仅供参考；待接入 AI 真实分析 |
+| 跟踪器无自动定时重评 | `nextCheckAt` 字段已就绪，但缺少定时触发机制和 OS 通知 |
 | 导出为剪贴板复制 | 不支持生成真实 Excel / PDF 文件 |
 | AI 响应轮询延迟 | 最快约 2 秒感知到 AI 回复 |
