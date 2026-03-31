@@ -22,6 +22,7 @@ import { ChatMode } from './pages/Amazon/ChatMode';
 import { FormMode } from './pages/Amazon/FormMode';
 import { Tracker } from './pages/Amazon/Tracker';
 import { History } from './pages/Amazon/History';
+import { AmazonSettings } from './pages/Amazon/AmazonSettings';
 import { useSettingsStore } from './stores/settings';
 import { useGatewayStore } from './stores/gateway';
 import { useProviderStore } from './stores/providers';
@@ -188,6 +189,7 @@ function App() {
             <Route path="/amazon/form" element={<FormMode />} />
             <Route path="/amazon/tracker" element={<Tracker />} />
             <Route path="/amazon/history" element={<History />} />
+            <Route path="/amazon/settings" element={<AmazonSettings />} />
           </Route>
         </Routes>
 

@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { MessageSquare, FileText, BarChart2, Package, Clock, TrendingUp } from 'lucide-react'
+import { MessageSquare, FileText, BarChart2, Package, Clock, TrendingUp, Settings2 } from 'lucide-react'
 import { ModeCard } from './components/ModeCard'
 import { VerdictBadge, ScoreBadge } from './components/VerdictBadge'
 import { MODE_LABELS } from './types'
@@ -32,11 +32,20 @@ export function Amazon() {
     <div className="max-w-3xl mx-auto space-y-8">
       {/* Header */}
       <div>
-        <div className="flex items-center gap-2.5 mb-1">
-          <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-            <Package className="h-4 w-4 text-primary" />
+        <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Package className="h-4 w-4 text-primary" />
+            </div>
+            <h1 className="text-xl font-semibold">选品助手</h1>
           </div>
-          <h1 className="text-xl font-semibold">选品助手</h1>
+          <button
+            onClick={() => navigate('/amazon/settings')}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground px-2.5 py-1.5 rounded-lg hover:bg-muted transition-colors"
+            title="MCP 与 Skill 配置"
+          >
+            <Settings2 className="h-3.5 w-3.5" />配置
+          </button>
         </div>
         <p className="text-sm text-muted-foreground">基于亚马逊选品方法论，智能评估产品入场可行性</p>
       </div>

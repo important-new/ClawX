@@ -31,6 +31,8 @@ import {
   setChannelEnabled,
   validateChannelConfig,
   validateChannelCredentials,
+  readOpenClawConfig,
+  writeOpenClawConfig,
 } from '../utils/channel-config';
 import { toOpenClawChannelType, toUiChannelType } from '../utils/channel-alias';
 import { checkUvInstalled, installUv, setupManagedPython } from '../utils/uv-setup';
@@ -122,6 +124,9 @@ export function registerIpcHandlers(
 
   // Skill config handlers (direct file access, no Gateway RPC)
   registerSkillConfigHandlers();
+
+  // Amazon selection assistant MCP config handlers
+  registerAmazonMcpHandlers();
 
   // Cron task handlers (proxy to Gateway RPC)
   registerCronHandlers(gatewayManager);
@@ -720,6 +725,39 @@ function registerSkillConfigHandlers(): void {
   // Get all skill configs
   ipcMain.handle('skill:getAllConfigs', async () => {
     return await getAllSkillConfigs();
+  });
+}
+
+/**
+ * Amazon selection assistant — MCP config IPC handlers.
+ * Writes the mcpServers block directly to ~/.openclaw/openclaw.json so that
+ * the Gateway picks it up on next restart.
+ */
+function registerAmazonMcpHandlers(): void {
+  ipcMain.handle('amazon:saveMcpConfig', async (_, mcpServers: Record<string, unknown>) => {
+    try {
+      const config = await readOpenClawConfig();
+      if (Object.keys(mcpServers).length === 0) {
+        delete config.mcpServers;
+      } else {
+        config.mcpServers = mcpServers;
+      }
+      await writeOpenClawConfig(config);
+      logger.info('[amazon] Saved mcpServers config:', Object.keys(mcpServers));
+      return { success: true };
+    } catch (err) {
+      logger.error('[amazon] Failed to save mcpServers config:', err);
+      return { success: false, error: String(err) };
+    }
+  });
+
+  ipcMain.handle('amazon:readMcpConfig', async () => {
+    try {
+      const config = await readOpenClawConfig();
+      return { success: true, mcpServers: (config.mcpServers as Record<string, unknown>) ?? {} };
+    } catch (err) {
+      return { success: false, mcpServers: {}, error: String(err) };
+    }
   });
 }
 
