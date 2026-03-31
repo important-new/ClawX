@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Plus, Trash2, Edit2, Check, X, ChevronDown,
   Server, Zap, AlertCircle, CheckCircle2, FolderOpen, RefreshCw,
-  Package, Calendar,
+  Package, Calendar, Download, Upload,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -174,7 +174,7 @@ function McpForm({
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
-type TabKey = 'mcp' | 'skills'
+type TabKey = 'mcp' | 'skills' | 'backup'
 
 export function AmazonSettings() {
   const navigate = useNavigate()
@@ -189,6 +189,9 @@ export function AmazonSettings() {
   const [editingMcpId, setEditingMcpId] = useState<string | null>(null)
   const [mcpFormInitial, setMcpFormInitial] = useState<McpFormState>(EMPTY_MCP_FORM)
   const [deleteConfirmMcpId, setDeleteConfirmMcpId] = useState<string | null>(null)
+
+  // Backup state
+  const [backupWorking, setBackupWorking] = useState(false)
 
   // Skill state — loaded from disk via IPC
   const [skills, setSkills] = useState<SkillMeta[]>([])
@@ -301,6 +304,57 @@ export function AmazonSettings() {
     }
   }
 
+  // ── Backup / restore ─────────────────────────────────────────────────────────
+
+  const handleExport = async () => {
+    setBackupWorking(true)
+    try {
+      const payload = {
+        version: 1,
+        exportedAt: Date.now(),
+        amazonStore: localStorage.getItem('amazon-selection-store') ?? '{}',
+        amazonSettingsStore: localStorage.getItem('amazon-settings-store') ?? '{}',
+      }
+      const result = await invokeIpc<{ success: boolean; canceled?: boolean; filePath?: string; error?: string }>(
+        'amazon:exportBackup',
+        payload,
+      )
+      if (result?.success) toast.success(`备份已导出到 ${result.filePath}`)
+      else if (!result?.canceled) toast.error(result?.error ?? '导出失败')
+    } finally {
+      setBackupWorking(false)
+    }
+  }
+
+  const handleImport = async () => {
+    setBackupWorking(true)
+    try {
+      const result = await invokeIpc<{
+        success: boolean; canceled?: boolean; error?: string
+        data?: { version: number; amazonStore: string; amazonSettingsStore: string }
+      }>('amazon:importBackup')
+
+      if (!result?.success || result.canceled) {
+        if (!result?.canceled) toast.error(result?.error ?? '导入失败')
+        return
+      }
+
+      const data = result.data
+      if (!data || data.version !== 1) {
+        toast.error('备份文件格式不兼容，请确认是选品助手导出的文件')
+        return
+      }
+
+      if (data.amazonStore) localStorage.setItem('amazon-selection-store', data.amazonStore)
+      if (data.amazonSettingsStore) localStorage.setItem('amazon-settings-store', data.amazonSettingsStore)
+
+      toast.success('备份已导入，将在 3 秒后重载页面以生效…')
+      setTimeout(() => window.location.reload(), 3000)
+    } finally {
+      setBackupWorking(false)
+    }
+  }
+
   // ── Apply to openclaw.json ───────────────────────────────────────────────────
 
   const handleApply = async () => {
@@ -347,6 +401,7 @@ export function AmazonSettings() {
         {([
           { key: 'mcp', label: 'MCP 服务器', icon: <Server className="h-3.5 w-3.5" /> },
           { key: 'skills', label: '自定义 Skill', icon: <Zap className="h-3.5 w-3.5" /> },
+          { key: 'backup', label: '数据备份', icon: <Download className="h-3.5 w-3.5" /> },
         ] as { key: TabKey; label: string; icon: React.ReactNode }[]).map(({ key, label, icon }) => (
           <button
             key={key}
@@ -496,6 +551,54 @@ export function AmazonSettings() {
               配置已写入并触发 Gateway 重载，MCP 服务器即将生效。
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Backup tab ──────────────────────────────────────────────────────── */}
+      {tab === 'backup' && (
+        <div className="space-y-4">
+          {/* Info */}
+          <div className="flex items-start gap-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-3">
+            <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div className="text-xs text-amber-700 dark:text-amber-300 space-y-0.5">
+              <p>以下数据存储在应用内部，<strong>卸载应用时会丢失</strong>，建议定期导出备份：</p>
+              <ul className="list-disc list-inside space-y-0.5 mt-1">
+                <li>所有选品分析记录（历史报告）</li>
+                <li>跟踪看板的产品列表与评分历史</li>
+                <li>MCP 服务器配置列表</li>
+              </ul>
+              <p className="mt-1 text-amber-600 dark:text-amber-400">
+                注：<code className="font-mono bg-amber-100 dark:bg-amber-900/50 px-1 rounded">~/.openclaw/</code>（Gateway 配置与已安装 Skill）卸载后会保留，无需手动备份。
+              </p>
+            </div>
+          </div>
+
+          {/* Export */}
+          <div className="rounded-xl border bg-card p-4 space-y-3">
+            <div>
+              <h3 className="text-sm font-medium">导出备份</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">将全部数据导出为 JSON 文件，保存到本地任意位置。</p>
+            </div>
+            <Button onClick={handleExport} disabled={backupWorking} size="sm" className="gap-2">
+              <Download className="h-3.5 w-3.5" />
+              {backupWorking ? '处理中...' : '导出备份文件'}
+            </Button>
+          </div>
+
+          {/* Import */}
+          <div className="rounded-xl border bg-card p-4 space-y-3">
+            <div>
+              <h3 className="text-sm font-medium">导入备份</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                重装应用后，选择之前导出的备份文件恢复数据。
+                <strong className="text-foreground"> 导入将覆盖当前数据</strong>，请确认后操作。
+              </p>
+            </div>
+            <Button onClick={handleImport} disabled={backupWorking} size="sm" variant="outline" className="gap-2">
+              <Upload className="h-3.5 w-3.5" />
+              {backupWorking ? '处理中...' : '选择备份文件并导入'}
+            </Button>
+          </div>
         </div>
       )}
 

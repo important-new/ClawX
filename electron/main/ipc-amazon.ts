@@ -13,11 +13,13 @@
  *   amazon:listUserSkills     — list skills in ~/.openclaw/skills/ with metadata
  *   amazon:installSkillFromPath — copy skill dir to skills dir + reload
  *   amazon:removeSkill        — remove skill dir from skills dir + reload
+ *   amazon:exportBackup       — write localStorage snapshot to a user-chosen JSON file
+ *   amazon:importBackup       — read a backup JSON file and return its contents
  */
 
 import { ipcMain, dialog } from 'electron';
 import {
-  readdir, readFile, mkdir, rm, cp,
+  readdir, readFile, writeFile, mkdir, rm, cp,
   stat,
 } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -218,6 +220,55 @@ export function registerAmazonHandlers(gatewayManager: GatewayManager): void {
       return { success: true }
     } catch (err) {
       logger.error('[amazon] removeSkill failed:', err)
+      return { success: false, error: String(err) }
+    }
+  })
+
+  // ── Backup / restore ────────────────────────────────────────────────────────
+
+  /**
+   * Show a "Save File" dialog and write the provided JSON backup to disk.
+   * The payload (localStorage snapshots) is assembled in the renderer.
+   */
+  ipcMain.handle('amazon:exportBackup', async (_, payload: unknown) => {
+    try {
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        title: '导出选品助手备份',
+        defaultPath: `amazon-backup-${new Date().toISOString().slice(0, 10)}.json`,
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+        buttonLabel: '导出',
+      })
+      if (canceled || !filePath) return { success: false, canceled: true }
+
+      await writeFile(filePath, JSON.stringify(payload, null, 2), 'utf-8')
+      logger.info('[amazon] Exported backup to', filePath)
+      return { success: true, filePath }
+    } catch (err) {
+      logger.error('[amazon] exportBackup failed:', err)
+      return { success: false, error: String(err) }
+    }
+  })
+
+  /**
+   * Show an "Open File" dialog, read the selected backup JSON, and return it.
+   * The renderer is responsible for writing the data back to localStorage.
+   */
+  ipcMain.handle('amazon:importBackup', async () => {
+    try {
+      const { canceled, filePaths } = await dialog.showOpenDialog({
+        title: '导入选品助手备份',
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+        properties: ['openFile'],
+        buttonLabel: '导入',
+      })
+      if (canceled || !filePaths.length) return { success: false, canceled: true }
+
+      const raw = await readFile(filePaths[0], 'utf-8')
+      const data = JSON.parse(raw) as unknown
+      logger.info('[amazon] Loaded backup from', filePaths[0])
+      return { success: true, data }
+    } catch (err) {
+      logger.error('[amazon] importBackup failed:', err)
       return { success: false, error: String(err) }
     }
   })
