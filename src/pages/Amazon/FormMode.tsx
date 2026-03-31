@@ -9,10 +9,12 @@ import { Progress } from '@/components/ui/progress'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { ReportView } from './components/ReportView'
+import { SkillInvoker } from './components/SkillInvoker'
 import { MODE_LABELS } from './types'
 import { useAmazonStore } from './store'
 import { useGatewayStore } from '@/stores/gateway'
 import { useGatewayRequest } from './hooks/useGatewayAI'
+import { useInstalledSkills } from './hooks/useInstalledSkills'
 import { runAnalysis } from './engine'
 import type { SelectionMode, DataInput, AnalysisSession } from './types'
 
@@ -174,6 +176,8 @@ export function FormMode() {
   const { addSession, addTracked, trackedProducts } = useAmazonStore()
   const gatewayRunning = useGatewayStore((s) => s.status.state === 'running')
   const aiRequest = useGatewayRequest()
+  const skillRequest = useGatewayRequest()
+  const { skills } = useInstalledSkills()
   const [aiInsight, setAiInsight] = useState<string | null>(null)
   const [showAiInsight, setShowAiInsight] = useState(false)
   const [step, setStep] = useState<Step>(1)
@@ -453,6 +457,21 @@ export function FormMode() {
             </div>
           )}
 
+          {/* Skill 专项分析 */}
+          {gatewayRunning && skills.length > 0 && (
+            <SkillInvoker
+              skills={skills}
+              productName={completedSession.productName}
+              mode={completedSession.mode}
+              market={completedSession.market}
+              reportContext={`综合评分：${completedSession.report.overallScore}，结论：${completedSession.report.verdict}，置信度：${completedSession.report.confidenceLevel}`}
+              onInvoke={(msg) => skillRequest.request(msg)}
+              invoking={skillRequest.loading}
+              result={skillRequest.result}
+              error={skillRequest.error}
+            />
+          )}
+
           <div className="flex gap-3">
             <Button variant="outline" className="flex-1" onClick={() => {
               setStep(1)
@@ -462,6 +481,7 @@ export function FormMode() {
               setAiInsight(null)
               setShowAiInsight(false)
               aiRequest.reset()
+              skillRequest.reset()
               setDataInputs(DATA_TYPES.map((d) => ({ type: d.type, label: d.label, required: d.required })))
             }}>
               重新分析

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Send, ChevronDown, Sparkles, Bot } from 'lucide-react'
+import { ArrowLeft, Send, ChevronDown, Sparkles, Bot, Zap, Package } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -13,6 +13,7 @@ import type { SelectionMode, DataInput, AnalysisSession } from './types'
 import { useAmazonStore } from './store'
 import { useGatewayStore } from '@/stores/gateway'
 import { useGatewayChat } from './hooks/useGatewayAI'
+import { useInstalledSkills } from './hooks/useInstalledSkills'
 import { runAnalysis } from './engine'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -298,6 +299,8 @@ export function ChatMode() {
   // ── AI mode (gateway-powered) ─────────────────────────────────────────────
   const [aiMode, setAiMode] = useState(false)
   const gatewayChat = useGatewayChat({ systemPrompt: AI_SYSTEM_PROMPT })
+  const { skills } = useInstalledSkills()
+  const [showSkillPicker, setShowSkillPicker] = useState(false)
   // Mini-form for report generation in AI mode
   const [showReportForm, setShowReportForm] = useState(false)
   const [aiReportName, setAiReportName] = useState('')
@@ -427,6 +430,7 @@ export function ChatMode() {
 
     // ── AI mode: route to gateway ──────────────────────────────────────────
     if (aiMode) {
+      setShowSkillPicker(false)
       await gatewayChat.send(userText)
       return
     }
@@ -488,9 +492,56 @@ export function ChatMode() {
         </div>
 
         <div className="ml-auto flex items-center gap-2">
+          {/* Skill picker — only shown in AI mode with skills available */}
+          {aiMode && skills.length > 0 && (
+            <div className="relative">
+              <button
+                onClick={() => setShowSkillPicker(!showSkillPicker)}
+                className={cn(
+                  'flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border transition-colors',
+                  showSkillPicker
+                    ? 'bg-purple-50 dark:bg-purple-950/30 border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300'
+                    : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                )}
+                title="选择 Skill 插入到输入框"
+              >
+                <Zap className="h-3 w-3" />
+                Skills
+                <span className="bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 rounded-full px-1 text-[10px]">
+                  {skills.length}
+                </span>
+              </button>
+              {showSkillPicker && (
+                <div className="absolute right-0 top-full mt-1 z-50 w-56 rounded-xl border bg-popover shadow-lg py-1">
+                  <p className="text-[10px] text-muted-foreground px-3 py-1.5 border-b">选择后将插入调用提示到输入框</p>
+                  {skills.map((skill) => (
+                    <button
+                      key={skill.slug}
+                      onClick={() => {
+                        const name = agentState.productName || '当前产品'
+                        const msg = `请调用 Skill「${skill.name}」，对产品「${name}」进行专项分析。`
+                        setInput(msg)
+                        setShowSkillPicker(false)
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-muted transition-colors"
+                    >
+                      <Package className="h-3.5 w-3.5 text-purple-500 shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium truncate">{skill.name}</p>
+                        {skill.description && (
+                          <p className="text-[10px] text-muted-foreground truncate">{skill.description}</p>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {gatewayRunning && (
             <button
-              onClick={() => { setAiMode(!aiMode); if (!aiMode) gatewayChat.reset() }}
+              onClick={() => { setAiMode(!aiMode); if (!aiMode) { gatewayChat.reset(); setShowSkillPicker(false) } }}
               className={cn(
                 'flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border transition-colors',
                 aiMode
