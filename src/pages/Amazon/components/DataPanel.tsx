@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Database, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Plus, Zap } from 'lucide-react'
+import { Database, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Plus, Zap, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { DataInput } from '../types'
 
@@ -24,9 +24,13 @@ interface DataPanelProps {
   onAdd: (type: DataInput['type']) => void
   onFetch: (type: DataInput['type']) => void
   onContentChange?: (type: DataInput['type'], content: string) => void
+  /** Types currently being fetched via MCP */
+  fetchingTypes?: Set<DataInput['type']>
+  /** Per-type fetch errors */
+  fetchErrors?: Partial<Record<DataInput['type'], string>>
 }
 
-export function DataPanel({ inputs, collapsed, onToggle, onAdd, onFetch, onContentChange }: DataPanelProps) {
+export function DataPanel({ inputs, collapsed, onToggle, onAdd, onFetch, onContentChange, fetchingTypes, fetchErrors }: DataPanelProps) {
   const [expandedSet, setExpandedSet] = useState<Set<DataInput['type']>>(new Set())
 
   const toggleExpand = (type: DataInput['type']) => {
@@ -132,12 +136,19 @@ export function DataPanel({ inputs, collapsed, onToggle, onAdd, onFetch, onConte
                   <Plus className="h-2.5 w-2.5" /> 粘贴
                 </button>
                 <button
-                  onClick={() => onFetch(item.type)}
-                  className="flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-primary/10 hover:bg-primary/20 text-primary transition-colors"
+                  onClick={() => !fetchingTypes?.has(item.type) && onFetch(item.type)}
+                  disabled={fetchingTypes?.has(item.type)}
+                  className="flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-primary/10 hover:bg-primary/20 text-primary transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  <Zap className="h-2.5 w-2.5" /> 抓取
+                  {fetchingTypes?.has(item.type)
+                    ? <><Loader2 className="h-2.5 w-2.5 animate-spin" /> 抓取中</>
+                    : <><Zap className="h-2.5 w-2.5" /> 抓取</>
+                  }
                 </button>
               </div>
+            )}
+            {fetchErrors?.[item.type] && (
+              <p className="text-[10px] text-red-500 mt-1">⚠ {fetchErrors[item.type]}</p>
             )}
             {item.source === 'manual' && expandedSet.has(item.type) && onContentChange && (
               <textarea

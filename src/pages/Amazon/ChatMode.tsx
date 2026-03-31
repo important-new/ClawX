@@ -14,6 +14,7 @@ import { useAmazonStore } from './store'
 import { useGatewayStore } from '@/stores/gateway'
 import { useGatewayChat } from './hooks/useGatewayAI'
 import { useInstalledSkills } from './hooks/useInstalledSkills'
+import { useMcpDataFetch } from './hooks/useMcpDataFetch'
 import { runAnalysis } from './engine'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -300,6 +301,7 @@ export function ChatMode() {
   const [aiMode, setAiMode] = useState(false)
   const gatewayChat = useGatewayChat({ systemPrompt: AI_SYSTEM_PROMPT })
   const { skills } = useInstalledSkills()
+  const { fetchData: fetchMcpData, fetching: mcpFetching, errors: mcpErrors } = useMcpDataFetch()
   const [showSkillPicker, setShowSkillPicker] = useState(false)
   // Mini-form for report generation in AI mode
   const [showReportForm, setShowReportForm] = useState(false)
@@ -351,14 +353,22 @@ export function ChatMode() {
     navigate('/amazon/tracker')
   }, [addTracked, trackedProducts, navigate])
 
-  const handleFetchData = useCallback((type: DataInput['type']) => {
+  const handleFetchData = useCallback(async (type: DataInput['type']) => {
+    const state = agentState
+    const content = await fetchMcpData(type, {
+      productName: state.productName || '未指定',
+      keywords: state.keywords.length ? state.keywords : [state.productName || '未指定'],
+      market: state.market,
+    })
     setAgentState((prev) => ({
       ...prev,
       dataInputs: prev.dataInputs.map((d) =>
-        d.type === type ? { ...d, source: 'mcp' as const, loadedAt: Date.now(), content: '' } : d
+        d.type === type
+          ? { ...d, source: 'mcp' as const, loadedAt: Date.now(), content: content ?? '' }
+          : d
       ),
     }))
-  }, [])
+  }, [agentState, fetchMcpData])
 
   const handleDataContentChange = useCallback((type: DataInput['type'], content: string) => {
     setAgentState((prev) => ({
@@ -570,6 +580,8 @@ export function ChatMode() {
           onAdd={handleAddData}
           onFetch={handleFetchData}
           onContentChange={handleDataContentChange}
+          fetchingTypes={mcpFetching}
+          fetchErrors={mcpErrors}
         />
 
         {/* Chat area */}

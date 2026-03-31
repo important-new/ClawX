@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, Check, Plus, Zap, X, ChevronDown, Sparkles, ChevronUp } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, Plus, Zap, X, ChevronDown, Sparkles, ChevronUp, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -15,6 +15,7 @@ import { useAmazonStore } from './store'
 import { useGatewayStore } from '@/stores/gateway'
 import { useGatewayRequest } from './hooks/useGatewayAI'
 import { useInstalledSkills } from './hooks/useInstalledSkills'
+import { useMcpDataFetch } from './hooks/useMcpDataFetch'
 import { runAnalysis } from './engine'
 import type { SelectionMode, DataInput, AnalysisSession } from './types'
 
@@ -87,9 +88,13 @@ interface DataItemProps {
   onMarkLoaded: (type: DataInput['type'], source: 'manual' | 'mcp', content?: string) => void
   onRemove: (type: DataInput['type']) => void
   onContentChange: (type: DataInput['type'], content: string) => void
+  onFetchMcp?: () => void
+  fetchingMcp?: boolean
+  fetchError?: string
+  gatewayAvailable?: boolean
 }
 
-function DataItem({ dt, input, onMarkLoaded, onRemove, onContentChange }: DataItemProps) {
+function DataItem({ dt, input, onMarkLoaded, onRemove, onContentChange, onFetchMcp, fetchingMcp, fetchError, gatewayAvailable }: DataItemProps) {
   const [expanded, setExpanded] = useState(false)
   const isLoaded = !!input.source
 
@@ -118,7 +123,7 @@ function DataItem({ dt, input, onMarkLoaded, onRemove, onContentChange }: DataIt
               onClick={() => setExpanded(!expanded)}
               className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
             >
-              {input.source === 'mcp' ? 'MCP 抓取' : '已粘贴'} ✓
+              {input.source === 'mcp' ? 'MCP 已抓取' : '已粘贴'} ✓
               <ChevronDown className={cn('h-3 w-3 transition-transform', expanded && 'rotate-180')} />
             </button>
             <button onClick={() => onRemove(dt.type)} className="p-1 rounded hover:bg-muted text-muted-foreground">
@@ -134,19 +139,25 @@ function DataItem({ dt, input, onMarkLoaded, onRemove, onContentChange }: DataIt
             >
               <Plus className="h-3 w-3" /> 粘贴数据
             </Button>
-            <Button
-              variant="outline" size="sm"
-              className="gap-1.5 h-7 text-xs text-primary hover:text-primary"
-              onClick={() => onMarkLoaded(dt.type, 'mcp')}
-            >
-              <Zap className="h-3 w-3" /> MCP 抓取
-            </Button>
+            {gatewayAvailable && (
+              <Button
+                variant="outline" size="sm"
+                className="gap-1.5 h-7 text-xs text-primary hover:text-primary"
+                onClick={onFetchMcp}
+                disabled={fetchingMcp}
+              >
+                {fetchingMcp
+                  ? <><Loader2 className="h-3 w-3 animate-spin" /> 抓取中</>
+                  : <><Zap className="h-3 w-3" /> MCP 抓取</>
+                }
+              </Button>
+            )}
           </div>
         )}
       </div>
 
       {/* Expandable content area */}
-      {(isLoaded && input.source === 'manual' || expanded) && input.source !== 'mcp' && (
+      {(isLoaded || expanded) && input.source !== 'mcp' && (
         <div className="px-3.5 pb-3.5">
           <Textarea
             value={input.content ?? ''}
@@ -162,10 +173,16 @@ function DataItem({ dt, input, onMarkLoaded, onRemove, onContentChange }: DataIt
         </div>
       )}
 
-      {isLoaded && input.source === 'mcp' && (
-        <div className="px-3.5 pb-3 text-[11px] text-muted-foreground">
-          MCP 数据已标记为已加载（演示模式下将使用引擎估算值）
+      {isLoaded && input.source === 'mcp' && expanded && input.content && (
+        <div className="px-3.5 pb-3">
+          <pre className="text-[11px] font-mono text-foreground/80 whitespace-pre-wrap bg-muted/40 rounded p-2">
+            {input.content}
+          </pre>
         </div>
+      )}
+
+      {fetchError && (
+        <div className="px-3.5 pb-2 text-[11px] text-red-500">⚠ {fetchError}</div>
       )}
     </div>
   )
@@ -178,6 +195,7 @@ export function FormMode() {
   const aiRequest = useGatewayRequest()
   const skillRequest = useGatewayRequest()
   const { skills } = useInstalledSkills()
+  const { fetchData, fetching: mcpFetching, errors: mcpErrors } = useMcpDataFetch()
   const [aiInsight, setAiInsight] = useState<string | null>(null)
   const [showAiInsight, setShowAiInsight] = useState(false)
   const [step, setStep] = useState<Step>(1)
@@ -210,6 +228,12 @@ export function FormMode() {
 
   const handleContentChange = (type: DataInput['type'], content: string) => {
     setDataInputs((prev) => prev.map((d) => d.type === type ? { ...d, content } : d))
+  }
+
+  const handleFetchMcp = async (type: DataInput['type']) => {
+    const kws = keywords.split(/[,，\s]+/).map((k) => k.trim()).filter(Boolean)
+    const content = await fetchData(type, { productName, keywords: kws, market })
+    if (content) handleMarkLoaded(type, 'mcp', content)
   }
 
   const handleStartAnalysis = async () => {
@@ -374,6 +398,10 @@ export function FormMode() {
                   onMarkLoaded={handleMarkLoaded}
                   onRemove={handleRemoveData}
                   onContentChange={handleContentChange}
+                  onFetchMcp={() => handleFetchMcp(dt.type)}
+                  fetchingMcp={mcpFetching.has(dt.type)}
+                  fetchError={mcpErrors[dt.type]}
+                  gatewayAvailable={gatewayRunning}
                 />
               )
             })}
