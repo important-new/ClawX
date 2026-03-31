@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Download, GitCompare, Search, Trash2 } from 'lucide-react'
+import { ArrowLeft, Download, FileSpreadsheet, FileText, GitCompare, Search, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,6 +10,7 @@ import { ReportView } from './components/ReportView'
 import { CompareTable } from './components/CompareTable'
 import { MODE_LABELS, STEP_LABELS, VERDICT_LABELS } from './types'
 import { useAmazonStore } from './store'
+import { invokeIpc } from '@/lib/api-client'
 import type { Verdict, SelectionMode, AnalysisSession } from './types'
 
 function generateReportText(session: AnalysisSession): string {
@@ -93,6 +94,43 @@ export function History() {
     }
   }
 
+  const handleExportCsv = async () => {
+    const rows = filtered.filter((s) => s.report)
+    if (rows.length === 0) { toast.error('没有可导出的记录'); return }
+    const header = ['产品名称', '分析模式', '站点', '综合评分', '结论', '置信度', '初选得分', '竞争分析得分', '盈利核算得分', '合规排查得分', '创建时间']
+    const confidenceLabels: Record<string, string> = { high: '高', medium: '中', low: '低' }
+    const csvLines = [header.join(',')]
+    for (const s of rows) {
+      const r = s.report!
+      csvLines.push([
+        `"${s.productName.replace(/"/g, '""')}"`,
+        MODE_LABELS[s.mode],
+        s.market,
+        r.overallScore,
+        VERDICT_LABELS[r.verdict],
+        confidenceLabels[r.confidenceLevel] ?? r.confidenceLevel,
+        r.steps.initial.score,
+        r.steps.competition.score,
+        r.steps.profit.score,
+        r.steps.compliance.score,
+        new Date(s.createdAt).toLocaleDateString('zh-CN'),
+      ].join(','))
+    }
+    const csvContent = csvLines.join('\n')
+    const defaultName = `amazon-analysis-${new Date().toISOString().slice(0, 10)}.csv`
+    const result = await invokeIpc<{ success: boolean; canceled?: boolean; error?: string }>('amazon:exportCsv', csvContent, defaultName)
+    if (result?.success) toast.success('CSV 已导出')
+    else if (!result?.canceled) toast.error(result?.error ?? '导出失败')
+  }
+
+  const handleExportPdf = async () => {
+    if (!selected?.report) { toast.error('请先选择一条记录'); return }
+    const defaultName = `${selected.productName}-report-${new Date().toISOString().slice(0, 10)}.pdf`
+    const result = await invokeIpc<{ success: boolean; canceled?: boolean; error?: string }>('amazon:exportPdf', defaultName)
+    if (result?.success) toast.success('PDF 已导出')
+    else if (!result?.canceled) toast.error(result?.error ?? '导出失败')
+  }
+
   const handleExportOne = async (session: AnalysisSession) => {
     try {
       await navigator.clipboard.writeText(generateReportText(session))
@@ -132,8 +170,14 @@ export function History() {
             <GitCompare className="h-4 w-4" />
             {compareMode ? `对比中 (${compareIds.length})` : '对比模式'}
           </Button>
+          <Button variant="outline" size="sm" className="gap-2" onClick={handleExportCsv} title="导出 CSV（可在 Excel 中打开）">
+            <FileSpreadsheet className="h-4 w-4" /> 导出 CSV
+          </Button>
+          <Button variant="outline" size="sm" className="gap-2" onClick={handleExportPdf} title="将选中报告导出为 PDF">
+            <FileText className="h-4 w-4" /> 导出 PDF
+          </Button>
           <Button variant="outline" size="sm" className="gap-2" onClick={handleExportAll}>
-            <Download className="h-4 w-4" /> 批量导出
+            <Download className="h-4 w-4" /> 复制文本
           </Button>
         </div>
       </div>

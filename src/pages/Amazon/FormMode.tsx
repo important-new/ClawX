@@ -16,6 +16,7 @@ import { useGatewayStore } from '@/stores/gateway'
 import { useGatewayRequest } from './hooks/useGatewayAI'
 import { useInstalledSkills } from './hooks/useInstalledSkills'
 import { useMcpDataFetch } from './hooks/useMcpDataFetch'
+import { useAIEnrichedAnalysis } from './hooks/useAIEnrichedAnalysis'
 import { runAnalysis } from './engine'
 import type { SelectionMode, DataInput, AnalysisSession } from './types'
 
@@ -190,12 +191,13 @@ function DataItem({ dt, input, onMarkLoaded, onRemove, onContentChange, onFetchM
 
 export function FormMode() {
   const navigate = useNavigate()
-  const { addSession, addTracked, trackedProducts } = useAmazonStore()
+  const { addSession, updateSession, addTracked, trackedProducts } = useAmazonStore()
   const gatewayRunning = useGatewayStore((s) => s.status.state === 'running')
   const aiRequest = useGatewayRequest()
   const skillRequest = useGatewayRequest()
   const { skills } = useInstalledSkills()
   const { fetchData, fetching: mcpFetching, errors: mcpErrors } = useMcpDataFetch()
+  const { enrich: enrichWithAI, enriching: aiEnriching } = useAIEnrichedAnalysis()
   const [aiInsight, setAiInsight] = useState<string | null>(null)
   const [showAiInsight, setShowAiInsight] = useState(false)
   const [step, setStep] = useState<Step>(1)
@@ -252,12 +254,15 @@ export function FormMode() {
     }
     await new Promise((r) => setTimeout(r, 300))
 
-    // Run the analysis engine
+    // Run the local analysis engine
     const kws = keywords.split(/[,，\s]+/).map((k) => k.trim()).filter(Boolean)
-    const report = runAnalysis({ mode, productName, keywords: kws, market, dataInputs })
+    const engineInput = { mode, productName, keywords: kws, market, dataInputs }
+    let report = runAnalysis(engineInput)
 
-    const session: AnalysisSession = {
-      id: `f-${Date.now()}`,
+    // Show step 3 immediately with local results
+    const sessionId = `f-${Date.now()}`
+    const baseSession: AnalysisSession = {
+      id: sessionId,
       createdAt: Date.now(),
       updatedAt: Date.now(),
       workflowType: 'form',
@@ -269,10 +274,20 @@ export function FormMode() {
       status: 'completed',
       report,
     }
-    addSession(session)
-    setCompletedSession(session)
+    addSession(baseSession)
+    setCompletedSession(baseSession)
     setStep(3)
     setAnalyzing(false)
+
+    // If gateway is running and any data was loaded, enrich with AI in background
+    if (gatewayRunning && dataInputs.some((d) => d.source)) {
+      const enriched = await enrichWithAI(report, engineInput)
+      if (enriched.aiEnriched) {
+        const enrichedSession = { ...baseSession, report: enriched, updatedAt: Date.now() }
+        updateSession(sessionId, { report: enriched, updatedAt: Date.now() })
+        setCompletedSession(enrichedSession)
+      }
+    }
   }
 
   const isTracked = completedSession
@@ -445,6 +460,12 @@ export function FormMode() {
       {/* Step 3: Report */}
       {step === 3 && completedSession?.report && (
         <div className="space-y-4">
+          {aiEnriching && (
+            <div className="flex items-center gap-2 rounded-lg bg-primary/5 border border-primary/20 px-3 py-2 text-xs text-primary">
+              <Sparkles className="h-3.5 w-3.5 animate-pulse" />
+              AI 正在基于真实数据深度分析，完成后将自动更新评分与结论…
+            </div>
+          )}
           <ReportView session={completedSession} report={completedSession.report} onExport={() => {}} />
 
           {/* AI 深度解读 */}

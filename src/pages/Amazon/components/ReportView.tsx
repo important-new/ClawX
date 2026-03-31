@@ -1,4 +1,4 @@
-import { Download, ChevronDown, ChevronRight } from 'lucide-react'
+import { Download, ChevronDown, ChevronRight, Sparkles } from 'lucide-react'
 import { useState, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -123,6 +123,14 @@ export function ReportView({ session, report, onExport }: ReportViewProps) {
           <Download className="h-3.5 w-3.5" /> {exportCopied ? '已复制' : '导出报告'}
         </Button>
       </div>
+
+      {/* AI enriched badge */}
+      {report.aiEnriched && (
+        <div className="flex items-center gap-1.5 text-xs text-primary bg-primary/8 border border-primary/20 rounded-lg px-3 py-1.5">
+          <Sparkles className="h-3.5 w-3.5" />
+          评分与结论已由 Gateway AI 基于真实数据修正
+        </div>
+      )}
 
       {/* Score + Verdict */}
       <div className="grid grid-cols-3 gap-3">

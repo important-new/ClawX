@@ -15,6 +15,7 @@ import { useGatewayStore } from '@/stores/gateway'
 import { useGatewayChat } from './hooks/useGatewayAI'
 import { useInstalledSkills } from './hooks/useInstalledSkills'
 import { useMcpDataFetch } from './hooks/useMcpDataFetch'
+import { useAIEnrichedAnalysis } from './hooks/useAIEnrichedAnalysis'
 import { runAnalysis } from './engine'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -302,6 +303,7 @@ export function ChatMode() {
   const gatewayChat = useGatewayChat({ systemPrompt: AI_SYSTEM_PROMPT })
   const { skills } = useInstalledSkills()
   const { fetchData: fetchMcpData, fetching: mcpFetching, errors: mcpErrors } = useMcpDataFetch()
+  const { enrich: enrichWithAI } = useAIEnrichedAnalysis()
   const [showSkillPicker, setShowSkillPicker] = useState(false)
   // Mini-form for report generation in AI mode
   const [showReportForm, setShowReportForm] = useState(false)
@@ -379,13 +381,21 @@ export function ChatMode() {
 
   const runAnalysisAndReport = async (state: AgentState): Promise<AnalysisSession> => {
     await new Promise((r) => setTimeout(r, 1400))
-    const report = runAnalysis({
+    const engineInput = {
       mode: state.mode,
       productName: state.productName,
       keywords: state.keywords,
       market: state.market,
       dataInputs: state.dataInputs,
-    })
+    }
+    let report = runAnalysis(engineInput)
+
+    // Enrich with AI if gateway is running and any data was loaded
+    if (gatewayRunning && state.dataInputs.some((d) => d.source)) {
+      const enriched = await enrichWithAI(report, engineInput)
+      if (enriched.aiEnriched) report = enriched
+    }
+
     const session: AnalysisSession = {
       id: `c-${Date.now()}`,
       createdAt: Date.now(),

@@ -15,9 +15,11 @@
  *   amazon:removeSkill        — remove skill dir from skills dir + reload
  *   amazon:exportBackup       — write localStorage snapshot to a user-chosen JSON file
  *   amazon:importBackup       — read a backup JSON file and return its contents
+ *   amazon:exportCsv          — write analysis sessions as CSV to a user-chosen file
+ *   amazon:exportPdf          — print the current window to PDF and save
  */
 
-import { ipcMain, dialog } from 'electron';
+import { ipcMain, dialog, BrowserWindow } from 'electron';
 import {
   readdir, readFile, writeFile, mkdir, rm, cp,
   stat,
@@ -245,6 +247,62 @@ export function registerAmazonHandlers(gatewayManager: GatewayManager): void {
       return { success: true, filePath }
     } catch (err) {
       logger.error('[amazon] exportBackup failed:', err)
+      return { success: false, error: String(err) }
+    }
+  })
+
+  // ── File exports ────────────────────────────────────────────────────────────
+
+  /**
+   * Write analysis sessions as a CSV file.
+   * The renderer builds the CSV string; IPC shows the save dialog and writes.
+   */
+  ipcMain.handle('amazon:exportCsv', async (_, csvContent: string, defaultName: string) => {
+    try {
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        title: '导出 CSV',
+        defaultPath: defaultName,
+        filters: [{ name: 'CSV', extensions: ['csv'] }],
+        buttonLabel: '导出',
+      })
+      if (canceled || !filePath) return { success: false, canceled: true }
+
+      // Add UTF-8 BOM so Excel opens Chinese characters correctly
+      await writeFile(filePath, '\uFEFF' + csvContent, 'utf-8')
+      logger.info('[amazon] Exported CSV to', filePath)
+      return { success: true, filePath }
+    } catch (err) {
+      logger.error('[amazon] exportCsv failed:', err)
+      return { success: false, error: String(err) }
+    }
+  })
+
+  /**
+   * Print the current window to PDF and save to a user-chosen file.
+   */
+  ipcMain.handle('amazon:exportPdf', async (event, defaultName: string) => {
+    try {
+      const win = BrowserWindow.fromWebContents(event.sender)
+      if (!win) return { success: false, error: '无法获取当前窗口' }
+
+      const { canceled, filePath } = await dialog.showSaveDialog(win, {
+        title: '导出 PDF',
+        defaultPath: defaultName,
+        filters: [{ name: 'PDF', extensions: ['pdf'] }],
+        buttonLabel: '导出',
+      })
+      if (canceled || !filePath) return { success: false, canceled: true }
+
+      const pdfData = await win.webContents.printToPDF({
+        printBackground: true,
+        pageSize: 'A4',
+        margins: { top: 0.5, bottom: 0.5, left: 0.5, right: 0.5 },
+      })
+      await writeFile(filePath, pdfData)
+      logger.info('[amazon] Exported PDF to', filePath)
+      return { success: true, filePath }
+    } catch (err) {
+      logger.error('[amazon] exportPdf failed:', err)
       return { success: false, error: String(err) }
     }
   })

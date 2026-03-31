@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { TrackerCard } from './components/TrackerCard'
 import { useAmazonStore } from './store'
 import { runAnalysis } from './engine'
+import { useTrackerAutoCheck } from './hooks/useTrackerAutoCheck'
 import type { AnalysisSession } from './types'
 
 export function Tracker() {
@@ -13,6 +14,9 @@ export function Tracker() {
   const { trackedProducts, sessions, addSession, updateTracked, removeTracked } = useAmazonStore()
   const [reanalyzingIds, setReanalyzingIds] = useState<Set<string>>(new Set())
   const [filter, setFilter] = useState<'all' | 'active' | 'paused'>('all')
+
+  // Auto-recheck overdue products every 5 minutes
+  useTrackerAutoCheck()
 
   const filtered = trackedProducts.filter((p) => filter === 'all' || p.status === filter)
   const alertCount = trackedProducts.filter((p) => p.status === 'active' && p.scoreTrend === 'down' && p.alertOnChange).length

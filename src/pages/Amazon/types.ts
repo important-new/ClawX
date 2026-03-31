@@ -62,6 +62,8 @@ export interface AnalysisReport {
     priority: 'high' | 'medium' | 'low'
     text: string
   }>
+  /** True when the verdict/score/actionItems have been enriched by Gateway AI */
+  aiEnriched?: boolean
 }
 
 export interface AnalysisSession {
