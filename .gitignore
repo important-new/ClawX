@@ -18,6 +18,7 @@ release/
 *.njsproj
 *.sln
 *.sw?
+.claude/
 
 # Environment
 .env
