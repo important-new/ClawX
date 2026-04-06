@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, Plus, Play, Square, Trash2, 
   ChevronUp, ChevronDown, Clock, Search, Zap, Loader2,
-  ChevronRight, Settings2
+  ChevronRight, Settings2, X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -250,7 +250,7 @@ export function AmazonPipeline() {
                   )}
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-2 px-3 h-8 rounded-md border bg-background text-xs">
+                  <div className="flex items-center gap-2 px-3 h-8 rounded-md border bg-background text-xs group/cron">
                     <Clock className="h-3.5 w-3.5 text-muted-foreground mr-1" />
                     <span className="text-muted-foreground truncate max-w-[40px]">定时:</span>
                     <input 
@@ -260,6 +260,14 @@ export function AmazonPipeline() {
                       value={selectedWorkflow.cron || ''}
                       onChange={(e) => updateWorkflow(selectedWorkflow.id, { cron: e.target.value })}
                     />
+                    {selectedWorkflow.cron && (
+                      <button 
+                        onClick={() => updateWorkflow(selectedWorkflow.id, { cron: '' })}
+                        className="opacity-0 group-hover/cron:opacity-100 p-0.5 hover:bg-muted rounded"
+                      >
+                        <X className="h-2.5 w-2.5 text-muted-foreground" />
+                      </button>
+                    )}
                   </div>
                   {isExecuting ? (
                     <Button variant="destructive" size="sm" className="h-8" onClick={stopWorkflow}>
@@ -368,7 +376,6 @@ export function AmazonPipeline() {
                                       ) : arg.type === 'number' ? (
                                         <Input 
                                           type="number" 
-                                          size="sm" 
                                           value={(step.args[arg.name] ?? '') as any} 
                                           onChange={(e) => {
                                             const newSteps = [...selectedWorkflow.steps];
@@ -382,7 +389,6 @@ export function AmazonPipeline() {
                                         />
                                       ) : (
                                         <Input 
-                                          size="sm" 
                                           value={(step.args[arg.name] ?? '') as any} 
                                           onChange={(e) => {
                                             const newSteps = [...selectedWorkflow.steps];

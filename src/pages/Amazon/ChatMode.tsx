@@ -659,16 +659,22 @@ export function ChatMode() {
                         className="h-8 border-orange-300 dark:border-orange-700 text-orange-700 dark:text-orange-300 hover:bg-orange-100"
                         onClick={() => {
                           const lastMsg = gatewayChat.messages[gatewayChat.messages.length-1].content;
-                          // Simple heuristic for demo: mapping steps to stage IDs
+                          // Mapping chat steps to actual tool IDs and default args
                           const steps: any[] = [];
-                          if (lastMsg.includes('初选') || lastMsg.includes('Stage 1')) steps.push({ toolId: 'select-product-base', args: [] });
-                          if (lastMsg.includes('详情') || lastMsg.includes('PPC')) steps.push({ toolId: 'select-detail', args: [] });
-                          if (lastMsg.includes('关键词')) steps.push({ toolId: 'select-keyword-research', args: [] });
+                          if (lastMsg.includes('初选') || lastMsg.includes('Stage 1')) {
+                            steps.push({ toolId: 'select_product_base', args: { session: '' } });
+                          }
+                          if (lastMsg.includes('详情') || lastMsg.includes('PPC')) {
+                            steps.push({ toolId: 'select_detail', args: { session: '' } });
+                          }
+                          if (lastMsg.includes('关键词')) {
+                            steps.push({ toolId: 'select_keyword_research', args: { session: '', 'max-min-ppc': 3.0 } });
+                          }
                           
                           handleSaveWorkflow({
                             id: `ai-wf-${Date.now()}`,
                             name: 'AI 生成任务',
-                            steps: steps.length > 0 ? steps : [{ toolId: 'select-product-base', args: [] }],
+                            steps: steps.length > 0 ? steps : [{ toolId: 'select_product_base', args: {} }],
                             status: 'idle'
                           });
                         }}
