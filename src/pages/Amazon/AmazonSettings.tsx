@@ -253,9 +253,12 @@ export function AmazonSettings() {
   // ── Skill actions ────────────────────────────────────────────────────────────
 
   const handleSelectSkillDir = async () => {
+    console.log('[AmazonSettings] Button clicked: selectSkillDir')
+    toast.info('正在请求选择目录...')
     const result = await invokeIpc<{ canceled: boolean; filePaths: string[] }>(
       'amazon:selectSkillDir',
     )
+    console.log('[AmazonSettings] result from IPC:', result)
     if (result?.canceled || !result?.filePaths?.length) return
 
     const srcPath = result.filePaths[0]
@@ -268,6 +271,7 @@ export function AmazonSettings() {
       return
     }
     setPreviewMeta({ meta: metaResult.meta, srcPath })
+    toast.success('Skill 已读取，请在下方预览并确认安装')
   }
 
   const handleConfirmInstall = async () => {

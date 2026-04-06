@@ -78,6 +78,13 @@ export function registerIpcHandlers(
   clawHubService: ClawHubService,
   mainWindow: BrowserWindow
 ): void {
+  process.stdout.write('>>> [STDOUT] IPC REGISTRATION STARTING...\n');
+  console.log('>>> IPC HANDLER REGISTRATION STARTING...');
+  
+  // PRIMARY: Amazon handlers (must run first)
+  registerAmazonHandlers(gatewayManager, mainWindow);
+  console.log('>>> AMAZON HANDLERS REGISTERED');
+
   // Unified request protocol (non-breaking: legacy channels remain available)
   registerUnifiedRequestHandlers(gatewayManager);
 
@@ -126,9 +133,6 @@ export function registerIpcHandlers(
   // Cron task handlers (proxy to Gateway RPC)
   registerCronHandlers(gatewayManager);
 
-  // Amazon selection assistant handlers (MCP config + skill management)
-  registerAmazonHandlers(gatewayManager);
-
   // Window control handlers (for custom title bar on Windows/Linux)
   registerWindowHandlers(mainWindow);
 
@@ -140,6 +144,9 @@ export function registerIpcHandlers(
 
   // File staging handlers (upload/send separation)
   registerFileHandlers();
+
+  console.log('>>> IPC HANDLER REGISTRATION COMPLETE');
+  process.stdout.write('>>> [STDOUT] IPC REGISTRATION COMPLETE\n');
 }
 
 function registerUnifiedRequestHandlers(gatewayManager: GatewayManager): void {

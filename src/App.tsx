@@ -143,13 +143,14 @@ function App() {
       }
     };
 
-    const unsubscribe = window.electron.ipcRenderer.on('navigate', handleNavigate);
-
-    return () => {
-      if (typeof unsubscribe === 'function') {
-        unsubscribe();
-      }
-    };
+    if (typeof window !== 'undefined' && window.electron) {
+      const unsubscribe = window.electron.ipcRenderer.on('navigate', handleNavigate);
+      return () => {
+        if (typeof unsubscribe === 'function') {
+          unsubscribe();
+        }
+      };
+    }
   }, [navigate]);
 
   // Apply theme

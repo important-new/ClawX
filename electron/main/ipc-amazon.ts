@@ -75,12 +75,16 @@ let runner: ToolExecutor | null = null;
 let workflowRunner: WorkflowExecutor | null = null;
 let scheduler: AmazonScheduler | null = null;
 
-export function registerAmazonHandlers(gatewayManager: GatewayManager): void {
-  if (!runner) {
-    runner = new ToolExecutor();
-    workflowRunner = new WorkflowExecutor(runner);
-    scheduler = new AmazonScheduler(runner);
-    scheduler.start(); // Start background task runner
+export function registerAmazonHandlers(gatewayManager: GatewayManager, mainWindow: BrowserWindow): void {
+  console.log('>>> [amazon] REGISTERING HANDLERS...');
+  try {
+    if (!runner) {
+      runner = new ToolExecutor();
+      workflowRunner = new WorkflowExecutor(runner);
+      scheduler = new AmazonScheduler(runner);
+    }
+  } catch (err) {
+    console.error('>>> [amazon] CRITICAL: FAILED TO INITIALIZE RUNNER/SCHEDULER:', err);
   }
 
   // ── MCP config ─────────────────────────────────────────────────────────────
@@ -119,11 +123,14 @@ export function registerAmazonHandlers(gatewayManager: GatewayManager): void {
    * Returns { canceled, filePaths } — the same shape as Electron's dialog API.
    */
   ipcMain.handle('amazon:selectSkillDir', async () => {
-    return dialog.showOpenDialog({
+    logger.info('[amazon] Receiving IPC: amazon:selectSkillDir');
+    const result = await dialog.showOpenDialog(mainWindow, {
       title: '选择 Skill 目录',
       properties: ['openDirectory'],
       buttonLabel: '选择',
-    })
+    });
+    logger.info('[amazon] selectSkillDir result:', { canceled: result.canceled, pathCount: result.filePaths.length });
+    return result;
   })
 
   /**
@@ -131,16 +138,20 @@ export function registerAmazonHandlers(gatewayManager: GatewayManager): void {
    * Returns SkillMeta or an error.
    */
   ipcMain.handle('amazon:readSkillMeta', async (_, dirPath: string) => {
+    logger.info(`[amazon] Reading skill meta from: ${dirPath}`);
     try {
       const skillMdPath = join(dirPath, 'SKILL.md')
       if (!existsSync(skillMdPath)) {
+        logger.warn(`[amazon] SKILL.md not found in ${dirPath}`);
         return { success: false, error: '目录中未找到 SKILL.md 文件' }
       }
       const content = await readFile(skillMdPath, 'utf-8')
       const slug = basename(dirPath)
       const meta = parseSkillMd(content, slug)
+      logger.info(`[amazon] Successfully read skill meta for "${meta.name}" (${meta.slug})`);
       return { success: true, meta }
     } catch (err) {
+      logger.error(`[amazon] Error reading skill meta from ${dirPath}:`, err);
       return { success: false, error: String(err) }
     }
   })
@@ -184,9 +195,11 @@ export function registerAmazonHandlers(gatewayManager: GatewayManager): void {
    * If a skill with the same slug already exists it is replaced.
    */
   ipcMain.handle('amazon:installSkillFromPath', async (_, srcPath: string) => {
+    logger.info(`[amazon] Installing skill from path: ${srcPath}`);
     try {
       const skillMdPath = join(srcPath, 'SKILL.md')
       if (!existsSync(skillMdPath)) {
+        logger.warn(`[amazon] Installation failed: SKILL.md missing in ${srcPath}`);
         return { success: false, error: '源目录中未找到 SKILL.md，无法安装' }
       }
 
@@ -201,18 +214,20 @@ export function registerAmazonHandlers(gatewayManager: GatewayManager): void {
 
       // Remove existing installation if present
       if (existsSync(destPath)) {
+        logger.info(`[amazon] Removing existing skill installation at ${destPath}`);
         await rm(destPath, { recursive: true, force: true })
       }
 
       // Copy entire skill directory
+      logger.info(`[amazon] Copying skill directory to ${destPath}`);
       await cp(srcPath, destPath, { recursive: true })
 
-      logger.info(`[amazon] Installed skill "${meta.slug}" from ${srcPath}`)
+      logger.info(`[amazon] Skill "${meta.slug}" installed successfully. Reloading Gateway...`);
       gatewayManager.debouncedReload()
 
       return { success: true, slug: meta.slug, meta }
     } catch (err) {
-      logger.error('[amazon] installSkillFromPath failed:', err)
+      logger.error(`[amazon] installSkillFromPath failed for ${srcPath}:`, err)
       return { success: false, error: String(err) }
     }
   })
@@ -248,7 +263,7 @@ export function registerAmazonHandlers(gatewayManager: GatewayManager): void {
    */
   ipcMain.handle('amazon:exportBackup', async (_, payload: unknown) => {
     try {
-      const { canceled, filePath } = await dialog.showSaveDialog({
+      const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
         title: '导出选品助手备份',
         defaultPath: `amazon-backup-${new Date().toISOString().slice(0, 10)}.json`,
         filters: [{ name: 'JSON', extensions: ['json'] }],
@@ -273,7 +288,7 @@ export function registerAmazonHandlers(gatewayManager: GatewayManager): void {
    */
   ipcMain.handle('amazon:exportCsv', async (_, csvContent: string, defaultName: string) => {
     try {
-      const { canceled, filePath } = await dialog.showSaveDialog({
+      const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
         title: '导出 CSV',
         defaultPath: defaultName,
         filters: [{ name: 'CSV', extensions: ['csv'] }],
@@ -294,20 +309,17 @@ export function registerAmazonHandlers(gatewayManager: GatewayManager): void {
   /**
    * Print the current window to PDF and save to a user-chosen file.
    */
-  ipcMain.handle('amazon:exportPdf', async (event, defaultName: string) => {
+  ipcMain.handle('amazon:exportPdf', async (_, defaultName: string) => {
     try {
-      const win = BrowserWindow.fromWebContents(event.sender)
-      if (!win) return { success: false, error: '无法获取当前窗口' }
-
-      const { canceled, filePath } = await dialog.showSaveDialog(win, {
+      const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
         title: '导出 PDF',
         defaultPath: defaultName,
         filters: [{ name: 'PDF', extensions: ['pdf'] }],
         buttonLabel: '导出',
       })
       if (canceled || !filePath) return { success: false, canceled: true }
-
-      const pdfData = await win.webContents.printToPDF({
+ 
+      const pdfData = await mainWindow.webContents.printToPDF({
         printBackground: true,
         pageSize: 'A4',
         margins: { top: 0.5, bottom: 0.5, left: 0.5, right: 0.5 },
@@ -327,7 +339,7 @@ export function registerAmazonHandlers(gatewayManager: GatewayManager): void {
    */
   ipcMain.handle('amazon:importBackup', async () => {
     try {
-      const { canceled, filePaths } = await dialog.showOpenDialog({
+      const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
         title: '导入选品助手备份',
         filters: [{ name: 'JSON', extensions: ['json'] }],
         properties: ['openFile'],
@@ -443,16 +455,26 @@ export function registerAmazonHandlers(gatewayManager: GatewayManager): void {
 
   // ── Workflow Store IPCs ───────────────────────────────────────────────────
   ipcMain.handle('amazon:listWorkflows', async () => {
-    return amazonWorkflowStore.getWorkflows();
+    return await amazonWorkflowStore.getWorkflows();
   });
 
   ipcMain.handle('amazon:saveWorkflow', async (_, workflow: Workflow) => {
-    amazonWorkflowStore.saveWorkflow(workflow);
+    await amazonWorkflowStore.saveWorkflow(workflow);
     return { success: true };
   });
 
   ipcMain.handle('amazon:removeWorkflow', async (_, id: string) => {
-    amazonWorkflowStore.removeWorkflow(id);
+    await amazonWorkflowStore.removeWorkflow(id);
     return { success: true };
   });
+
+  // ── Scheduler ────────────────────────────────────────────────────────────
+  try {
+    if (scheduler && typeof scheduler.start === 'function') {
+      scheduler.start();
+    }
+  } catch (err) {
+    logger.error(`[amazon] Failed to start scheduler: ${err}`);
+  }
+  console.log('>>> [amazon] HANDLERS REGISTERED SUCCESSFULLY');
 }

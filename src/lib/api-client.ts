@@ -336,6 +336,10 @@ async function invokeViaIpc<T>(channel: string, args: unknown[]): Promise<T> {
     }
   }
 
+  if (typeof window === 'undefined' || !window.electron) {
+    throw normalizeAppError(new Error(`Cannot call IPC channel "${channel}" outside of Electron environment.`), { transport: 'ipc', channel });
+  }
+
   try {
     return await window.electron.ipcRenderer.invoke(channel, ...args) as T;
   } catch (err) {

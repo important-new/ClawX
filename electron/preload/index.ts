@@ -138,6 +138,27 @@ const electronAPI = {
         'openclaw:getConfigDir',
         'openclaw:getSkillsDir',
         'openclaw:getCliCommand',
+        // Amazon skills
+        'amazon:saveMcpConfig',
+        'amazon:readMcpConfig',
+        'amazon:selectSkillDir',
+        'amazon:readSkillMeta',
+        'amazon:listUserSkills',
+        'amazon:installSkillFromPath',
+        'amazon:removeSkill',
+        'amazon:exportBackup',
+        'amazon:importBackup',
+        'amazon:exportCsv',
+        'amazon:exportPdf',
+        'amazon:listTools',
+        'amazon:runTool',
+        'amazon:stopTool',
+        'amazon:getToolStatus',
+        'amazon:runWorkflow',
+        'amazon:stopWorkflow',
+        'amazon:listWorkflows',
+        'amazon:saveWorkflow',
+        'amazon:removeWorkflow',
       ];
 
       if (validChannels.includes(channel)) {
@@ -179,6 +200,12 @@ const electronAPI = {
         'oauth:success',
         'oauth:error',
         'openclaw:cli-installed',
+        // Amazon events
+        'amazon:toolProgress',
+        'amazon:toolIntervention',
+        'amazon:toolOutput',
+        'amazon:workflowProgress',
+        'amazon:workflowIntervention',
       ];
 
       if (validChannels.includes(channel)) {
@@ -227,6 +254,12 @@ const electronAPI = {
         'oauth:code',
         'oauth:success',
         'oauth:error',
+        // Amazon events
+        'amazon:toolProgress',
+        'amazon:toolIntervention',
+        'amazon:toolOutput',
+        'amazon:workflowProgress',
+        'amazon:workflowIntervention',
       ];
 
       if (validChannels.includes(channel)) {
