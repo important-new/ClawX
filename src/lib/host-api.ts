@@ -229,3 +229,41 @@ export function createHostEventSource(path = '/api/events'): EventSource {
 export function getHostApiBase(): string {
   return HOST_API_BASE;
 }
+
+// ─── Amazon Pipeline Runner ──────────────────────────────────────────────────
+
+export async function listAmazonTools() {
+  return await invokeIpc<any[]>('amazon:listTools');
+}
+
+export async function runAmazonTool(toolPath: string, args: string[]) {
+  return await invokeIpc<any>('amazon:runTool', { toolPath, args });
+}
+
+export async function stopAmazonTool() {
+  return await invokeIpc<any>('amazon:stopTool');
+}
+
+export async function getAmazonToolStatus() {
+  return await invokeIpc<{ running: boolean; workflowRunning: boolean }>('amazon:getToolStatus');
+}
+
+export async function runAmazonWorkflow(workflow: any) {
+  return await invokeIpc<any>('amazon:runWorkflow', workflow);
+}
+
+export async function stopAmazonWorkflow() {
+  return await invokeIpc<any>('amazon:stopWorkflow');
+}
+
+export async function listAmazonWorkflows() {
+  return await invokeIpc<any[]>('amazon:listWorkflows');
+}
+
+export async function saveAmazonWorkflow(workflow: any) {
+  return await invokeIpc<any>('amazon:saveWorkflow', workflow);
+}
+
+export async function removeAmazonWorkflow(id: string) {
+  return await invokeIpc<any>('amazon:removeWorkflow', id);
+}

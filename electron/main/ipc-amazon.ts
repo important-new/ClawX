@@ -30,6 +30,11 @@ import { GatewayManager } from '../gateway/manager';
 import { readOpenClawConfig, writeOpenClawConfig } from '../utils/channel-config';
 import { getOpenClawSkillsDir } from '../utils/paths';
 import { logger } from '../utils/logger';
+import { scanTools } from './plugins/runner/scanner';
+import { ToolExecutor } from './plugins/runner/executor';
+import { WorkflowExecutor, Workflow } from './plugins/runner/workflow-executor';
+import { amazonWorkflowStore } from './plugins/runner/store';
+import { AmazonScheduler } from './plugins/runner/scheduler';
 
 // ─── SKILL.md frontmatter parser ─────────────────────────────────────────────
 // Parses simple YAML frontmatter without an external dependency.
@@ -65,9 +70,18 @@ function parseSkillMd(content: string, fallbackSlug: string): SkillMeta {
   }
 }
 
-// ─── Registration ─────────────────────────────────────────────────────────────
+// ─── Shared Runner State ───────────────────────────────────────────────────
+let runner: ToolExecutor | null = null;
+let workflowRunner: WorkflowExecutor | null = null;
+let scheduler: AmazonScheduler | null = null;
 
 export function registerAmazonHandlers(gatewayManager: GatewayManager): void {
+  if (!runner) {
+    runner = new ToolExecutor();
+    workflowRunner = new WorkflowExecutor(runner);
+    scheduler = new AmazonScheduler(runner);
+    scheduler.start(); // Start background task runner
+  }
 
   // ── MCP config ─────────────────────────────────────────────────────────────
 
@@ -330,4 +344,115 @@ export function registerAmazonHandlers(gatewayManager: GatewayManager): void {
       return { success: false, error: String(err) }
     }
   })
+
+  // ── Runner / Plugin Tools ──────────────────────────────────────────────────
+  
+  ipcMain.handle('amazon:listTools', async () => {
+    try {
+      const tools = scanTools();
+      return { success: true, tools };
+    } catch (err) {
+      return { success: false, error: String(err) };
+    }
+  });
+
+  ipcMain.handle('amazon:runTool', async (event, toolId: string, args: string[]) => {
+    try {
+      const tools = scanTools();
+      const tool = tools.find(t => t.id === toolId);
+      if (!tool) return { success: false, error: `Tool ${toolId} not found` };
+
+      if (runner?.isRunning()) {
+        return { success: false, error: 'Already running another tool' };
+      }
+
+      // Progress listener
+      const onProgress = (data: any) => {
+        event.sender.send('amazon:toolProgress', { toolId, ...data });
+      };
+      const onIntervention = (data: any) => {
+        event.sender.send('amazon:toolIntervention', { toolId, ...data });
+      };
+      const onOutput = (data: string) => {
+        event.sender.send('amazon:toolOutput', { toolId, output: data });
+      };
+
+      runner?.on('progress', onProgress);
+      runner?.on('intervention', onIntervention);
+      runner?.on('output', onOutput);
+
+      try {
+        const result = await runner?.execute(tool.path, args);
+        return { success: true, result };
+      } finally {
+        runner?.off('progress', onProgress);
+        runner?.off('intervention', onIntervention);
+        runner?.off('output', onOutput);
+      }
+    } catch (err) {
+      return { success: false, error: String(err) };
+    }
+  });
+
+  ipcMain.handle('amazon:stopTool', async () => {
+    runner?.stop();
+    return { success: true };
+  });
+
+  ipcMain.handle('amazon:getToolStatus', async () => {
+    return { 
+      running: !!runner?.isRunning(),
+      workflowRunning: !!workflowRunner?.getHealth().isRunning
+    };
+  });
+
+  ipcMain.handle('amazon:runWorkflow', async (event, workflow: Workflow) => {
+    try {
+      const tools = scanTools();
+      if (runner?.isRunning()) {
+        return { success: false, error: 'Already running another task' };
+      }
+
+      // Re-use progress listeners
+      const onProgress = (data: any) => {
+        event.sender.send('amazon:workflowProgress', { workflowId: workflow.id, ...data });
+      };
+      const onIntervention = (data: any) => {
+        event.sender.send('amazon:workflowIntervention', { workflowId: workflow.id, ...data });
+      };
+
+      runner?.on('progress', onProgress);
+      runner?.on('intervention', onIntervention);
+
+      try {
+        await workflowRunner?.run(workflow, tools);
+        return { success: true };
+      } finally {
+        runner?.off('progress', onProgress);
+        runner?.off('intervention', onIntervention);
+      }
+    } catch (err) {
+      return { success: false, error: String(err) };
+    }
+  });
+
+  ipcMain.handle('amazon:stopWorkflow', async () => {
+    workflowRunner?.stop();
+    return { success: true };
+  });
+
+  // ── Workflow Store IPCs ───────────────────────────────────────────────────
+  ipcMain.handle('amazon:listWorkflows', async () => {
+    return amazonWorkflowStore.getWorkflows();
+  });
+
+  ipcMain.handle('amazon:saveWorkflow', async (_, workflow: Workflow) => {
+    amazonWorkflowStore.saveWorkflow(workflow);
+    return { success: true };
+  });
+
+  ipcMain.handle('amazon:removeWorkflow', async (_, id: string) => {
+    amazonWorkflowStore.removeWorkflow(id);
+    return { success: true };
+  });
 }

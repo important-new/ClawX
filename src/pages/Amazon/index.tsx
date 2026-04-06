@@ -94,6 +94,14 @@ export function Amazon() {
             accent="bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300"
           />
           <ModeCard
+            icon={<TrendingUp className="h-5 w-5" />}
+            title="流水线编排"
+            description="自定义工作流，编排抓取与过滤各个阶段，支持定时自动运行全链路分析"
+            tags={['全自动', '定时任务', '灵活编排']}
+            onClick={() => navigate('/amazon/pipeline')}
+            accent="bg-orange-100 text-orange-700 dark:bg-orange-950/20 dark:text-orange-300"
+          />
+          <ModeCard
             icon={<BarChart2 className="h-5 w-5" />}
             title="跟踪模式"
             description="添加候选产品到监控池，定期自动重新评估，掌握市场动态"

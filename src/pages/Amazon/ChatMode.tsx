@@ -11,6 +11,7 @@ import { ReportView } from './components/ReportView'
 import { MODE_LABELS } from './types'
 import type { SelectionMode, DataInput, AnalysisSession } from './types'
 import { useAmazonStore } from './store'
+import { useAmazonWorkflowStore, Workflow } from './amazonWorkflowStore'
 import { useGatewayStore } from '@/stores/gateway'
 import { useGatewayChat } from './hooks/useGatewayAI'
 import { useInstalledSkills } from './hooks/useInstalledSkills'
@@ -99,6 +100,12 @@ function extractKeywords(text: string, productName: string): string[] {
 
   const kws = raw.length > 0 ? raw : [productName]
   return [...new Set(kws)].slice(0, 6)
+}
+
+/** Detect if user wants to build a pipeline/workflow */
+function detectWorkflowIntent(text: string): boolean {
+  const keywords = ['流程', '流水线', '串联', '自动运行', 'pipeline', 'workflow', '步骤'];
+  return keywords.some(k => text.includes(k));
 }
 
 function isPositiveAck(text: string): boolean {
@@ -280,6 +287,7 @@ const WELCOME = `你好！我是亚马逊选品助手。
 export function ChatMode() {
   const navigate = useNavigate()
   const { addSession, addTracked, trackedProducts } = useAmazonStore()
+  const { addWorkflow } = useAmazonWorkflowStore()
   const gatewayRunning = useGatewayStore((s) => s.status.state === 'running')
 
   // ── Local state machine mode ──────────────────────────────────────────────
@@ -441,6 +449,12 @@ export function ChatMode() {
     addSession(session)
     setAiReportSession(session)
     toast.success(`"${aiReportName}" 报告已生成`)
+  }
+
+  const handleSaveWorkflow = (wf: Workflow) => {
+    addWorkflow(wf)
+    toast.success('工作流已保存到流水线编排')
+    navigate('/amazon/pipeline')
   }
 
   const handleSend = async () => {
@@ -628,6 +642,39 @@ export function ChatMode() {
                   <div className="flex justify-start">
                     <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-2xl rounded-bl-sm px-4 py-3 text-sm max-w-[80%]">
                       ⚠ {gatewayChat.error}
+                    </div>
+                  </div>
+                )}
+                {/* Workflow suggestion logic */}
+                {gatewayChat.messages.length > 0 && !gatewayChat.sending && detectWorkflowIntent(gatewayChat.messages[gatewayChat.messages.length - 1].content) && (
+                  <div className="flex justify-start px-4">
+                    <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-2xl p-4 w-full max-w-[80%]">
+                      <div className="flex items-center gap-2 mb-2 text-orange-700 dark:text-orange-300">
+                        <Zap className="h-4 w-4" />
+                        <span className="text-xs font-semibold">检测到流程编排意图</span>
+                      </div>
+                      <p className="text-xs mb-3">您可以将当前对话中讨论的步骤保存为自动化流水线。</p>
+                      <Button 
+                        size="sm" variant="outline" 
+                        className="h-8 border-orange-300 dark:border-orange-700 text-orange-700 dark:text-orange-300 hover:bg-orange-100"
+                        onClick={() => {
+                          const lastMsg = gatewayChat.messages[gatewayChat.messages.length-1].content;
+                          // Simple heuristic for demo: mapping steps to stage IDs
+                          const steps: any[] = [];
+                          if (lastMsg.includes('初选') || lastMsg.includes('Stage 1')) steps.push({ toolId: 'select-product-base', args: [] });
+                          if (lastMsg.includes('详情') || lastMsg.includes('PPC')) steps.push({ toolId: 'select-detail', args: [] });
+                          if (lastMsg.includes('关键词')) steps.push({ toolId: 'select-keyword-research', args: [] });
+                          
+                          handleSaveWorkflow({
+                            id: `ai-wf-${Date.now()}`,
+                            name: 'AI 生成任务',
+                            steps: steps.length > 0 ? steps : [{ toolId: 'select-product-base', args: [] }],
+                            status: 'idle'
+                          });
+                        }}
+                      >
+                        保存为自动化流水线
+                      </Button>
                     </div>
                   </div>
                 )}
