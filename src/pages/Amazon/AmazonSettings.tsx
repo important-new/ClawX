@@ -410,6 +410,7 @@ export function AmazonSettings() {
           <button
             key={key}
             onClick={() => setTab(key)}
+            data-testid={`amazon-settings-tab-${key}`}
             className={cn(
               'flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
               tab === key
@@ -638,7 +639,7 @@ export function AmazonSettings() {
               </div>
               <div className="flex justify-end gap-2">
                 <Button size="sm" variant="outline" onClick={() => setPreviewMeta(null)}>取消</Button>
-                <Button size="sm" onClick={handleConfirmInstall} disabled={installingSkill}>
+                <Button size="sm" onClick={handleConfirmInstall} disabled={installingSkill} data-testid="amazon-confirm-install-button">
                   <Check className="h-3.5 w-3.5 mr-1" />
                   {installingSkill ? '安装中...' : '确认安装'}
                 </Button>
@@ -699,7 +700,7 @@ export function AmazonSettings() {
 
           {/* Action row */}
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handleSelectSkillDir} className="gap-1.5">
+            <Button variant="outline" size="sm" onClick={handleSelectSkillDir} className="gap-1.5" data-testid="amazon-select-skill-dir-button">
               <FolderOpen className="h-3.5 w-3.5" />选择 Skill 目录
             </Button>
             <Button variant="ghost" size="sm" onClick={loadSkills} disabled={skillsLoading} className="gap-1.5 text-muted-foreground">

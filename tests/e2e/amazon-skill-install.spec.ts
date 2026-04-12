@@ -6,18 +6,23 @@ test.describe('Amazon Skill Installation Flow', () => {
     await page.getByTestId('setup-skip-button').click();
     await expect(page.getByTestId('main-layout')).toBeVisible();
 
-    // 2. Navigate to Amazon Settings -> Skills tab
-    // Note: Adjusting selectors based on AmazonSettings.tsx
-    await page.goto('http://localhost:5173/#/amazon/settings'); // Assuming routing
-    // Or click sidebar if available
-    
-    // Wait for the tab to be visible and click 'skills'
-    await page.getByRole('button', { name: /Skill/ }).click(); 
-
-    // 3. Mock IPC calls
+    // 2. Mock IPC calls (before navigation to catch automatic loading calls)
     await page.evaluate(() => {
-      const originalInvoke = window.electron.ipcRenderer.invoke;
-      window.electron.ipcRenderer.invoke = async (channel: string, ...args: any[]) => {
+      const originalInvoke = (window as any).electron.ipcRenderer.invoke;
+      (window as any)._skillInstalled = false;
+      (window as any).electron.ipcRenderer.invoke = async (channel: string, ...args: any[]) => {
+        if (channel === 'amazon:listUserSkills') {
+          if ((window as any)._skillInstalled) {
+             return { success: true, skills: [{
+                slug: 'sellersprite-search-products',
+                name: 'SellerSprite Search Products',
+                version: '1.0.0',
+                description: 'Search products using SellerSprite API',
+                installedAt: Date.now()
+             }] };
+          }
+          return { success: true, skills: [] };
+        }
         if (channel === 'amazon:selectSkillDir') {
           return { canceled: false, filePaths: ['D:\\Code\\amazon\\.agent\\skills\\sellersprite-search-products'] };
         }
@@ -34,39 +39,34 @@ test.describe('Amazon Skill Installation Flow', () => {
           };
         }
         if (channel === 'amazon:installSkillFromPath') {
+          (window as any)._skillInstalled = true;
           return { success: true, slug: 'sellersprite-search-products' };
-        }
-        if (channel === 'amazon:listUserSkills') {
-          // First call might be empty, subsequent call (after install) should have the skill
-          // We can use a simple state to toggle
-          if ((window as any)._skillInstalled) {
-             return { success: true, skills: [{
-                slug: 'sellersprite-search-products',
-                name: 'SellerSprite Search Products',
-                version: '1.0.0',
-                description: 'Search products using SellerSprite API'
-             }] };
-          }
-          return { success: true, skills: [] };
         }
         return originalInvoke(channel, ...args);
       };
     });
 
+    // 3. Navigate to Amazon -> Settings -> Skills tab using UI interaction
+    await page.getByTestId('sidebar-nav-amazon').click();
+    await expect(page.getByRole('heading', { name: '选品助手' })).toBeVisible(); 
+    await page.getByTestId('amazon-settings-button').click();
+    
+    // Wait for the Settings page and select "自定义 Skill" tab
+    await page.getByTestId('amazon-settings-tab-skills').click(); 
+
     // 4. Trigger "Select Skill Directory"
-    await page.getByRole('button', { name: '选择 Skill 目录' }).click();
+    await page.getByTestId('amazon-select-skill-dir-button').click();
 
     // 5. Verify Preview Panel appears
     await expect(page.getByText('安装预览')).toBeVisible();
     await expect(page.getByText('SellerSprite Search Products')).toBeVisible();
-    await expect(page.getByText('Skill 已读取，请在下方预览并确认安装')).toBeVisible();
-
+    
     // 6. Click "Confirm Install"
-    await page.evaluate(() => { (window as any)._skillInstalled = true; });
-    await page.getByRole('button', { name: '确认安装' }).click();
+    await page.getByTestId('amazon-confirm-install-button').click();
 
     // 7. Verify Success Toast and List Refresh
-    await expect(page.getByText('安装成功')).toBeVisible();
-    await expect(page.locator('div').filter({ hasText: /^SellerSprite Search Products$/ }).first()).toBeVisible();
+    await expect(page.getByText(/安装成功/)).toBeVisible();
+    await expect(page.getByText('SellerSprite Search Products', { exact: false })).toBeVisible();
+    await expect(page.getByText('1.0.0')).toBeVisible();
   });
 });

@@ -75,16 +75,12 @@ export function AmazonPipeline() {
       }
     };
 
-    // @ts-ignore
-    window.electron.ipcRenderer.on('amazon:workflowProgress', handleProgress);
-    // @ts-ignore
-    window.electron.ipcRenderer.on('amazon:workflowIntervention', handleIntervention);
+    const unprogress = window.electron.ipcRenderer.on('amazon:workflowProgress', handleProgress);
+    const unintervention = window.electron.ipcRenderer.on('amazon:workflowIntervention', handleIntervention);
 
     return () => {
-      // @ts-ignore
-      window.electron.ipcRenderer.removeAllListeners('amazon:workflowProgress');
-      // @ts-ignore
-      window.electron.ipcRenderer.removeAllListeners('amazon:workflowIntervention');
+      if (typeof unprogress === 'function') unprogress();
+      if (typeof unintervention === 'function') unintervention();
     };
   }, [selectedWorkflowId]);
 

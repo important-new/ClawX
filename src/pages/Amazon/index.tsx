@@ -43,6 +43,7 @@ export function Amazon() {
             onClick={() => navigate('/amazon/settings')}
             className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground px-2.5 py-1.5 rounded-lg hover:bg-muted transition-colors"
             title="MCP 与 Skill 配置"
+            data-testid="amazon-settings-button"
           >
             <Settings2 className="h-3.5 w-3.5" />配置
           </button>
