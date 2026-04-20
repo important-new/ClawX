@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { 
-  ArrowLeft, Plus, Play, Square, Trash2, 
+  Plus, Play, Square, Trash2, 
   ChevronUp, ChevronDown, Clock, Search, Zap, Loader2,
   ChevronRight, Settings2, X
 } from 'lucide-react';
+import { AmazonBreadcrumbs } from './components/AmazonBreadcrumbs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
@@ -27,7 +27,6 @@ interface PluginTool {
 }
 
 export function AmazonPipeline() {
-  const navigate = useNavigate();
   const { workflows, init, addWorkflow, updateWorkflow, removeWorkflow } = useAmazonWorkflowStore();
   
   const [tools, setTools] = useState<PluginTool[]>([]);
@@ -48,7 +47,11 @@ export function AmazonPipeline() {
     setLoadingTools(true);
     try {
       const result = await listAmazonTools();
-      setTools(result as PluginTool[]);
+      if (result.success && Array.isArray(result.tools)) {
+        setTools(result.tools as PluginTool[]);
+      } else {
+        throw new Error(result.error || 'Unknown error');
+      }
     } catch (err) {
       toast.error('无法加载工具列表');
     } finally {
@@ -166,24 +169,10 @@ export function AmazonPipeline() {
   };
 
   return (
-    <div className="flex flex-col h-full -m-6 bg-background">
-      {/* Top Header */}
-      <div className="flex items-center gap-3 px-4 py-3 border-b shrink-0">
-        <button onClick={() => navigate('/amazon')} className="p-1.5 rounded hover:bg-muted">
-          <ArrowLeft className="h-4 w-4" />
-        </button>
-        <div className="flex flex-col">
-          <h1 className="text-sm font-semibold">流水线编排</h1>
-          <p className="text-[11px] text-muted-foreground">编排您的选品自动化流程</p>
-        </div>
-        <div className="ml-auto flex items-center gap-2">
-          <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={createWorkflow}>
-            <Plus className="h-3.5 w-3.5" />新建流程
-          </Button>
-        </div>
-      </div>
+    <div className="flex flex-col h-full overflow-hidden">
+      <AmazonBreadcrumbs currentMode="流水线编排" />
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 -m-6 mt-0 border rounded-2xl bg-card/40 backdrop-blur-sm overflow-hidden min-h-0 relative">
         {/* Sidebar: Workflows list */}
         <div className="w-64 border-r bg-muted/30 flex flex-col overflow-hidden">
           <div className="p-3 border-b bg-background/50">

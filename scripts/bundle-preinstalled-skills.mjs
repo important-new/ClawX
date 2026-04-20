@@ -82,23 +82,27 @@ async function extractArchive(archiveFileName, cwd) {
 
 async function fetchSparseRepo(repo, ref, paths, checkoutDir) {
   const remote = `https://github.com/${repo}.git`;
+  rmSync(checkoutDir, { recursive: true, force: true });
   mkdirSync(checkoutDir, { recursive: true });
-  const gitCheckoutDir = toGitPath(checkoutDir);
+
   const archiveFileName = '.subset.tar';
-  const archivePath = join(checkoutDir, archiveFileName);
   const archivePaths = [...new Set(paths.map(normalizeRepoPath))];
 
-  await $`git init ${gitCheckoutDir}`;
-  await $`git -C ${gitCheckoutDir} remote add origin ${remote}`;
-  await $`git -C ${gitCheckoutDir} fetch --depth 1 origin ${ref}`;
-  // Do not checkout working tree on Windows: upstream repos may contain
-  // Windows-invalid paths. Export only requested directories via git archive.
-  await $`git -C ${gitCheckoutDir} archive --format=tar --output ${archiveFileName} FETCH_HEAD ${archivePaths}`;
-  await extractArchive(archiveFileName, checkoutDir);
-  rmSync(archivePath, { force: true });
-
-  const commit = (await $`git -C ${gitCheckoutDir} rev-parse FETCH_HEAD`).stdout.trim();
-  return commit;
+  const prevCwd = $.cwd;
+  $.cwd = checkoutDir;
+  try {
+    await $`git init`;
+    await $`git remote add origin ${remote}`;
+    await $`git fetch --depth 1 origin ${ref}`;
+    // Use relative path for output since we are in checkoutDir
+    await $`git archive --format=tar --output ${archiveFileName} FETCH_HEAD ${archivePaths}`;
+    await extractArchive(archiveFileName, checkoutDir);
+    rmSync(archiveFileName, { force: true });
+    const commit = (await $`git rev-parse FETCH_HEAD`).stdout.trim();
+    return commit;
+  } finally {
+    $.cwd = prevCwd;
+  }
 }
 
 echo`Bundling preinstalled skills...`;

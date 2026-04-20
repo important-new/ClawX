@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Download, FileSpreadsheet, FileText, GitCompare, Search, Trash2 } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
+import { Clock, FileSpreadsheet, FileText, GitCompare, Search, Trash2 } from 'lucide-react'
+import { AmazonBreadcrumbs } from './components/AmazonBreadcrumbs'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -50,7 +51,6 @@ const VERDICT_FILTER: Array<{ value: 'all' | Verdict; label: string }> = [
 ]
 
 export function History() {
-  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const sessions = useAmazonStore((s) => s.sessions)
   const removeSession = useAmazonStore((s) => s.removeSession)
@@ -80,19 +80,6 @@ export function History() {
     )
   }
 
-  const handleExportAll = async () => {
-    if (filtered.length === 0) return
-    const text = filtered
-      .filter((s) => s.report)
-      .map((s) => generateReportText(s))
-      .join('\n\n---\n\n')
-    try {
-      await navigator.clipboard.writeText(text)
-      toast.success(`已复制 ${filtered.length} 份报告到剪贴板`)
-    } catch {
-      toast.error('复制失败，请重试')
-    }
-  }
 
   const handleExportCsv = async () => {
     const rows = filtered.filter((s) => s.report)
@@ -148,36 +135,35 @@ export function History() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto space-y-5">
+    <div className="flex flex-col h-full max-w-6xl mx-auto w-full">
+      <AmazonBreadcrumbs currentMode="历史记录" />
+
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/amazon')} className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
-            <ArrowLeft className="h-4 w-4" />
-          </button>
+          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+            <Clock className="h-5 w-5 text-primary" />
+          </div>
           <div>
-            <h1 className="text-lg font-semibold">历史报告</h1>
-            <p className="text-xs text-muted-foreground">共 {sessions.length} 条分析记录</p>
+            <h1 className="text-lg font-bold">历史报告</h1>
+            <p className="text-[11px] text-muted-foreground">共 {sessions.length} 条分析记录</p>
           </div>
         </div>
         <div className="flex gap-2">
           <Button
             variant={compareMode ? 'default' : 'outline'}
             size="sm"
-            className="gap-2"
+            className="gap-2 rounded-xl"
             onClick={() => { setCompareMode(!compareMode); setCompareIds([]) }}
           >
             <GitCompare className="h-4 w-4" />
             {compareMode ? `对比中 (${compareIds.length})` : '对比模式'}
           </Button>
-          <Button variant="outline" size="sm" className="gap-2" onClick={handleExportCsv} title="导出 CSV（可在 Excel 中打开）">
+          <Button variant="outline" size="sm" className="gap-2 rounded-xl" onClick={handleExportCsv} title="导出 CSV">
             <FileSpreadsheet className="h-4 w-4" /> 导出 CSV
           </Button>
-          <Button variant="outline" size="sm" className="gap-2" onClick={handleExportPdf} title="将选中报告导出为 PDF">
+          <Button variant="outline" size="sm" className="gap-2 rounded-xl" onClick={handleExportPdf} title="将选中报告导出为 PDF">
             <FileText className="h-4 w-4" /> 导出 PDF
-          </Button>
-          <Button variant="outline" size="sm" className="gap-2" onClick={handleExportAll}>
-            <Download className="h-4 w-4" /> 复制文本
           </Button>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, Check, Plus, Zap, X, ChevronDown, Sparkles, ChevronUp, Loader2 } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, Plus, Zap, X, ChevronDown, Sparkles, ChevronUp, Loader2, Package } from 'lucide-react'
+import { AmazonBreadcrumbs } from './components/AmazonBreadcrumbs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -323,13 +324,18 @@ export function FormMode() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div className="flex flex-col h-full max-w-6xl mx-auto w-full">
+      <AmazonBreadcrumbs currentMode="表单模式" />
+
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <button onClick={() => navigate('/amazon')} className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
-          <ArrowLeft className="h-4 w-4" />
-        </button>
-        <h1 className="text-lg font-semibold">表单模式</h1>
+      <div className="flex items-center gap-3 mb-6">
+        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+          <Package className="h-5 w-5 text-primary" />
+        </div>
+        <div>
+          <h1 className="text-lg font-bold">表单分析模式</h1>
+          <p className="text-[11px] text-muted-foreground">通过标准化流程引导，完成高质量的一站式选品评估</p>
+        </div>
       </div>
 
       <StepIndicator current={step} />

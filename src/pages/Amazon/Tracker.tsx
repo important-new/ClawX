@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Plus, BarChart2, Bell } from 'lucide-react'
+import { Plus, BarChart2, Bell } from 'lucide-react'
+import { AmazonBreadcrumbs } from './components/AmazonBreadcrumbs'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { TrackerCard } from './components/TrackerCard'
@@ -117,23 +118,25 @@ export function Tracker() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto space-y-5">
+    <div className="flex flex-col h-full max-w-6xl mx-auto w-full">
+      <AmazonBreadcrumbs currentMode="跟踪看板" />
+
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/amazon')} className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
-            <ArrowLeft className="h-4 w-4" />
-          </button>
+          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+            <BarChart2 className="h-5 w-5 text-primary" />
+          </div>
           <div>
-            <h1 className="text-lg font-semibold">跟踪看板</h1>
-            <p className="text-xs text-muted-foreground">
+            <h1 className="text-lg font-bold">跟踪看板</h1>
+            <p className="text-[11px] text-muted-foreground">
               {trackedProducts.filter((p) => p.status === 'active').length} 个产品跟踪中
               {alertCount > 0 && <span className="ml-2 text-yellow-600 dark:text-yellow-400">· {alertCount} 个评分下降</span>}
             </p>
           </div>
         </div>
-        <Button className="gap-2" size="sm" onClick={() => navigate('/amazon/form')}>
-          <Plus className="h-4 w-4" /> 添加产品
+        <Button className="gap-2 rounded-xl" size="sm" onClick={() => navigate('/amazon/form')}>
+          <Plus className="h-4 w-4" /> 添加产品分析
         </Button>
       </div>
 

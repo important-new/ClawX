@@ -24,6 +24,7 @@ import { Tracker } from './pages/Amazon/Tracker';
 import { History } from './pages/Amazon/History';
 import { AmazonPipeline } from './pages/Amazon/AmazonPipeline';
 import { AmazonSettings } from './pages/Amazon/AmazonSettings';
+import { AmazonWizard } from './pages/Amazon/AmazonWizard';
 import { useSettingsStore } from './stores/settings';
 import { useGatewayStore } from './stores/gateway';
 import { useProviderStore } from './stores/providers';
@@ -207,6 +208,7 @@ function App() {
             <Route path="/amazon/history" element={<History />} />
             <Route path="/amazon/pipeline" element={<AmazonPipeline />} />
             <Route path="/amazon/settings" element={<AmazonSettings />} />
+            <Route path="/amazon/wizard" element={<AmazonWizard />} />
             {extraRoutes.map((r) => (
               <Route key={r.path} path={r.path} element={<r.component />} />
             ))}

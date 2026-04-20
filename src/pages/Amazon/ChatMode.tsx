@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Send, ChevronDown, Sparkles, Bot, Zap, Package } from 'lucide-react'
+import { Send, ChevronDown, Sparkles, Bot, Zap, Package } from 'lucide-react'
+import { AmazonBreadcrumbs } from './components/AmazonBreadcrumbs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -504,13 +505,15 @@ export function ChatMode() {
   }
 
   return (
-    <div className="flex flex-col h-full -m-6">
+    <div className="flex flex-col h-full">
+      <AmazonBreadcrumbs currentMode="对话模式" />
+
       {/* Top bar */}
-      <div className="flex items-center gap-3 px-4 py-2.5 border-b bg-background shrink-0">
-        <button onClick={() => navigate('/amazon')} className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
-          <ArrowLeft className="h-4 w-4" />
-        </button>
-        <span className="text-sm font-medium">对话模式</span>
+      <div className="flex items-center gap-3 px-4 py-2.5 border rounded-2xl bg-card/50 backdrop-blur-sm shrink-0 mb-4">
+        <div className="flex items-center gap-2">
+          <Bot className="h-4 w-4 text-primary" />
+          <span className="text-sm font-semibold">对话会话</span>
+        </div>
         <div className="h-4 w-px bg-border" />
 
         {/* Mode selector */}

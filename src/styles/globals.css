@@ -80,6 +80,25 @@
   @apply bg-muted-foreground/30;
 }
 
+/* Custom scrollbar utility class */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.2);
+  border-radius: 10px;
+  transition: background 0.2s;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--primary) / 0.4);
+}
+
 /* macOS traffic light spacing */
 .drag-region {
   -webkit-app-region: drag;

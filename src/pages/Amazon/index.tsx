@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { MessageSquare, FileText, BarChart2, Package, Clock, TrendingUp, Settings2 } from 'lucide-react'
+import { MessageSquare, FileText, BarChart2, Package, Clock, TrendingUp, Settings2, Rocket } from 'lucide-react'
 import { ModeCard } from './components/ModeCard'
 import { VerdictBadge, ScoreBadge } from './components/VerdictBadge'
 import { MODE_LABELS } from './types'
@@ -79,6 +79,14 @@ export function Amazon() {
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">选择工作模式</h2>
         <div className="grid grid-cols-3 gap-3">
           <ModeCard
+            icon={<Rocket className="h-5 w-5" />}
+            title="选品向导"
+            description="最受推荐的方式：跟随引导式向导，逐步完成市场调研、竞品深度分析及核算"
+            tags={['最受推荐', '全自动化', '零门槛']}
+            onClick={() => navigate('/amazon/wizard')}
+            accent="bg-primary/10 text-primary"
+          />
+          <ModeCard
             icon={<MessageSquare className="h-5 w-5" />}
             title="对话模式"
             description="用自然语言描述需求，Agent 逐步引导提问并输出分析报告"
@@ -86,6 +94,7 @@ export function Amazon() {
             onClick={() => navigate('/amazon/chat')}
             accent="bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
           />
+
           <ModeCard
             icon={<FileText className="h-5 w-5" />}
             title="表单模式"

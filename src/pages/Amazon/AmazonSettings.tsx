@@ -1,10 +1,10 @@
 import { useState, useCallback, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
 import {
-  ArrowLeft, Plus, Trash2, Edit2, Check, X, ChevronDown,
+  Plus, Trash2, Edit2, Check, X, ChevronDown,
   Server, Zap, AlertCircle, CheckCircle2, FolderOpen, RefreshCw,
-  Package, Calendar, Download, Upload,
+  Package, Calendar, Download, Upload, Settings2,
 } from 'lucide-react'
+import { AmazonBreadcrumbs } from './components/AmazonBreadcrumbs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { toast } from 'sonner'
@@ -177,7 +177,6 @@ function McpForm({
 type TabKey = 'mcp' | 'skills' | 'backup'
 
 export function AmazonSettings() {
-  const navigate = useNavigate()
   const { mcpServers, addMcpServer, updateMcpServer, removeMcpServer, toggleMcpServer } = useAmazonSettingsStore()
 
   const [tab, setTab] = useState<TabKey>('mcp')
@@ -385,18 +384,17 @@ export function AmazonSettings() {
   // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div className="flex flex-col h-full max-w-6xl mx-auto w-full">
+      <AmazonBreadcrumbs currentMode="设置" />
+
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <button
-          onClick={() => navigate('/amazon')}
-          className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </button>
+      <div className="flex items-center gap-3 mb-6">
+        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+          <Settings2 className="h-5 w-5 text-primary" />
+        </div>
         <div>
-          <h1 className="text-base font-semibold">选品助手配置</h1>
-          <p className="text-xs text-muted-foreground">管理数据源 MCP 服务器和自定义 Skill</p>
+          <h1 className="text-lg font-bold">选品助手配置</h1>
+          <p className="text-[11px] text-muted-foreground">管理数据源 MCP 服务器和自定义 Skill</p>
         </div>
       </div>
 

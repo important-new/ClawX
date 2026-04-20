@@ -233,7 +233,7 @@ export function getHostApiBase(): string {
 // ─── Amazon Pipeline Runner ──────────────────────────────────────────────────
 
 export async function listAmazonTools() {
-  return await invokeIpc<any[]>('amazon:listTools');
+  return await invokeIpc<any>('amazon:listTools');
 }
 
 export async function runAmazonTool(toolPath: string, args: string[]) {

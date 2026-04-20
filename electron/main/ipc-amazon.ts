@@ -35,6 +35,7 @@ import { ToolExecutor } from './plugins/runner/executor';
 import { WorkflowExecutor, Workflow } from './plugins/runner/workflow-executor';
 import { amazonWorkflowStore } from './plugins/runner/store';
 import { AmazonScheduler } from './plugins/runner/scheduler';
+import { AMZ_FILTER_LABELS } from './plugins/amazon/filter-metadata';
 
 // ─── SKILL.md frontmatter parser ─────────────────────────────────────────────
 // Parses simple YAML frontmatter without an external dependency.
@@ -362,7 +363,51 @@ export function registerAmazonHandlers(gatewayManager: GatewayManager, mainWindo
   ipcMain.handle('amazon:listTools', async () => {
     try {
       const tools = scanTools();
-      return { success: true, tools };
+      
+      // Enforce non-intrusive deep loading: resolve defaults from filters_default.json
+      // This logic is kept here because it is Amazon-specific.
+      const enrichedTools = tools.map(tool => {
+        const toolDir = join(tool.path, '..');
+        const filtersPath = join(toolDir, 'filters_default.json');
+        
+        if (existsSync(filtersPath)) {
+          try {
+            const filterData = JSON.parse(require('node:fs').readFileSync(filtersPath, 'utf-8'));
+            const currentArgs = tool.arguments || [];
+            const expandedArgs = [...currentArgs];
+
+            // 1. Update defaults for existing args
+            expandedArgs.forEach((arg: any, index: number) => {
+              const jsonKey = arg.name.replace(/-/g, '_');
+              if (filterData[jsonKey] !== undefined) {
+                expandedArgs[index] = { ...arg, default: filterData[jsonKey] };
+              }
+            });
+
+            // 2. Expand: Add fields from JSON that aren't in ui.json
+            Object.entries(filterData).forEach(([key, val]) => {
+              if (key.startsWith('_')) return;
+              const argName = key.replace(/_/g, '-');
+              if (!expandedArgs.find((a: any) => a.name === argName || a.name === key)) {
+                expandedArgs.push({
+                  name: `filter:${key}`, // Use prefix to identify expanded filters
+                  label: AMZ_FILTER_LABELS[key] || key,
+                  type: typeof val === 'number' ? 'number' : typeof val === 'boolean' ? 'boolean' : 'string',
+                  default: val,
+                  help: `来源于配置文件: ${key}`
+                });
+              }
+            });
+
+            return { ...tool, arguments: expandedArgs };
+          } catch (e) {
+            logger.warn(`[amazon] Failed to enrich defaults for ${tool.id}:`, e);
+          }
+        }
+        return tool;
+      });
+
+      return { success: true, tools: enrichedTools };
     } catch (err) {
       return { success: false, error: String(err) };
     }
@@ -437,8 +482,49 @@ export function registerAmazonHandlers(gatewayManager: GatewayManager, mainWindo
       runner?.on('intervention', onIntervention);
 
       try {
-        await workflowRunner?.run(workflow, tools);
-        return { success: true };
+      // ── Process Expanded Filters ──────────────────────────────────────────
+      // If a step has 'filter:xxx' arguments, synthesize a temp JSON and override --filters-file
+      for (const step of workflow.steps) {
+        const filterArgs = Object.keys(step.args).filter(k => k.startsWith('filter:'));
+        if (filterArgs.length > 0) {
+          try {
+            const session = step.args['session'] || 'default';
+            const tempDir = join(join('d:\\Code\\amazon\\.agent\\skills', 'report'), 'sessions', session);
+            if (!existsSync(tempDir)) await mkdir(tempDir, { recursive: true });
+            
+            const tempFiltersPath = join(tempDir, `wizard_filters_${step.toolId.replace(/:/g, '_')}.json`);
+            
+            // Load base filters from tool dir if possible
+            const tool = scanTools().find(t => t.id === step.toolId);
+            let baseFilters = {};
+            if (tool) {
+              const filtersPath = join(join(tool.path, '..'), 'filters_default.json');
+              if (existsSync(filtersPath)) {
+                baseFilters = JSON.parse(require('node:fs').readFileSync(filtersPath, 'utf-8'));
+              }
+            }
+
+            // Apply overrides
+            const finalFilters = { ...baseFilters };
+            filterArgs.forEach(k => {
+              const jsonKey = k.replace('filter:', '');
+              finalFilters[jsonKey] = step.args[k];
+              delete step.args[k]; // Cleanup to avoid passing to CLI as individual flags
+            });
+
+            await writeFile(tempFiltersPath, JSON.stringify(finalFilters, null, 2), 'utf-8');
+            logger.info(`[amazon] Synthesized temp filters for ${step.toolId} -> ${tempFiltersPath}`);
+            
+            // Override the --filters-file arg
+            step.args['filters-file'] = tempFiltersPath;
+          } catch (err) {
+            logger.error(`[amazon] Failed to synthesize filters for ${step.toolId}:`, err);
+          }
+        }
+      }
+
+      await workflowRunner?.execute(workflow);
+      return { success: true };
       } finally {
         runner?.off('progress', onProgress);
         runner?.off('intervention', onIntervention);
