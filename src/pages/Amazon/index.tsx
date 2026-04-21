@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { MessageSquare, FileText, BarChart2, Package, Clock, TrendingUp, Settings2, Rocket } from 'lucide-react'
+import { MessageSquare, FileText, BarChart2, Package, Clock, TrendingUp, Settings2, Rocket, Filter } from 'lucide-react'
 import { ModeCard } from './components/ModeCard'
 import { VerdictBadge, ScoreBadge } from './components/VerdictBadge'
 import { MODE_LABELS } from './types'
@@ -110,6 +110,14 @@ export function Amazon() {
             tags={['全自动', '定时任务', '灵活编排']}
             onClick={() => navigate('/amazon/pipeline')}
             accent="bg-orange-100 text-orange-700 dark:bg-orange-950/20 dark:text-orange-300"
+          />
+          <ModeCard
+            icon={<Filter className="h-5 w-5" />}
+            title="Pipeline 向导"
+            description="全参数可调的选品漏斗：配置筛选阈值、执行监控、验证码恢复、查看报告"
+            tags={['全流程', '漏斗统计', '验证码恢复']}
+            onClick={() => navigate('/amazon/pipeline-wizard')}
+            accent="bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300"
           />
           <ModeCard
             icon={<BarChart2 className="h-5 w-5" />}

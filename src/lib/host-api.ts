@@ -267,3 +267,19 @@ export async function saveAmazonWorkflow(workflow: any) {
 export async function removeAmazonWorkflow(id: string) {
   return await invokeIpc<any>('amazon:removeWorkflow', id);
 }
+
+export async function resumeAmazonWorkflow() {
+  return await invokeIpc<any>('amazon:resumeWorkflow');
+}
+
+export async function readAmazonSessionFile(sessionName: string, fileName: string) {
+  return await invokeIpc<{ success: boolean; content?: string; filePath?: string; error?: string }>(
+    'amazon:readSessionFile', sessionName, fileName
+  );
+}
+
+export async function getAmazonSessionStats(sessionName: string) {
+  return await invokeIpc<{ success: boolean; stats: Record<string, any>; error?: string }>(
+    'amazon:getSessionStats', sessionName
+  );
+}

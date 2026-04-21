@@ -35,6 +35,7 @@
 | **对话模式** | 新手友好，AI 或引导式问答，逐步收集数据 |
 | **表单模式** | 结构化录入，批量数据粘贴，快速生成标准报告 |
 | **跟踪看板** | 监控候选产品，定期手动重评，掌握竞争态势变化 |
+| **Pipeline 向导** | 全参数可调的选品漏斗：配置筛选阈值、执行监控、验证码恢复、查看报告 |
 
 核心能力：
 - 五步评估模型：初选筛选 → 竞争分析 → 盈利核算 → 合规排查 → 试销方案
@@ -57,6 +58,7 @@
 /amazon/tracker      跟踪看板
 /amazon/history      历史报告
 /amazon/settings     配置页（MCP 服务器 / Skill 管理 / 数据备份）
+/amazon/pipeline-wizard  Pipeline 向导（4 步：配置→筛选→执行→结果）
 ```
 
 ---
@@ -543,6 +545,9 @@ interface AmazonSettingsState {
 | `amazon:removeSkill` | Renderer → Main | 删除 ~/.openclaw/skills/<slug>/，触发 Gateway 重载 |
 | `amazon:exportBackup` | Renderer → Main | 显示保存对话框，将备份 JSON 写入文件 |
 | `amazon:importBackup` | Renderer → Main | 显示打开对话框，读取备份文件并返回数据 |
+| `amazon:resumeWorkflow` | Renderer → Main | 恢复因验证码暂停的 workflow 执行 |
+| `amazon:readSessionFile` | Renderer → Main | 读取 session 目录下的文件（MD/CSV/JSON） |
+| `amazon:getSessionStats` | Renderer → Main | 获取 pipeline 漏斗统计数据 |
 
 ---
 

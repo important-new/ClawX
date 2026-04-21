@@ -523,7 +523,8 @@ export function registerAmazonHandlers(gatewayManager: GatewayManager, mainWindo
         }
       }
 
-      await workflowRunner?.execute(workflow);
+      const tools = scanTools();
+      await workflowRunner?.run(workflow, tools);
       return { success: true };
       } finally {
         runner?.off('progress', onProgress);
@@ -552,6 +553,102 @@ export function registerAmazonHandlers(gatewayManager: GatewayManager, mainWindo
   ipcMain.handle('amazon:removeWorkflow', async (_, id: string) => {
     await amazonWorkflowStore.removeWorkflow(id);
     return { success: true };
+  });
+
+  // ── Pipeline Resume / Session File / Stats ──────────────────────────────
+
+  ipcMain.handle('amazon:resumeWorkflow', async (event) => {
+    try {
+      if (!workflowRunner?.isPaused()) {
+        return { success: false, error: 'No paused workflow to resume' };
+      }
+
+      // Re-attach progress listeners
+      const onProgress = (data: any) => {
+        event.sender.send('amazon:workflowProgress', data);
+      };
+      const onIntervention = (data: any) => {
+        event.sender.send('amazon:workflowIntervention', data);
+      };
+
+      runner?.on('progress', onProgress);
+      runner?.on('intervention', onIntervention);
+
+      try {
+        await workflowRunner.resume();
+        return { success: true };
+      } finally {
+        runner?.off('progress', onProgress);
+        runner?.off('intervention', onIntervention);
+      }
+    } catch (err) {
+      return { success: false, error: String(err) };
+    }
+  });
+
+  ipcMain.handle('amazon:readSessionFile', async (_, sessionName: string, fileName: string) => {
+    try {
+      const sessionsBase = join('d:\\Code\\amazon\\.agent\\skills', 'report', 'sessions');
+      const filePath = join(sessionsBase, sessionName, fileName);
+
+      // Security: ensure the resolved path is within the sessions directory
+      const resolved = require('node:path').resolve(filePath);
+      const base = require('node:path').resolve(sessionsBase);
+      if (!resolved.startsWith(base)) {
+        return { success: false, error: 'Path traversal not allowed' };
+      }
+
+      if (!existsSync(filePath)) {
+        return { success: false, error: `File not found: ${fileName}` };
+      }
+
+      const content = await readFile(filePath, 'utf-8');
+      return { success: true, content, filePath: resolved };
+    } catch (err) {
+      return { success: false, error: String(err) };
+    }
+  });
+
+  ipcMain.handle('amazon:getSessionStats', async (_, sessionName: string) => {
+    try {
+      const sessionsBase = join('d:\\Code\\amazon\\.agent\\skills', 'report', 'sessions');
+      const sessionDir = join(sessionsBase, sessionName);
+
+      if (!existsSync(sessionDir)) {
+        return { success: true, stats: {} };
+      }
+
+      // Try pipeline_stats.json first
+      const statsPath = join(sessionDir, 'pipeline_stats.json');
+      if (existsSync(statsPath)) {
+        const raw = await readFile(statsPath, 'utf-8');
+        return { success: true, stats: JSON.parse(raw) };
+      }
+
+      // Fallback: count lines in known CSV files
+      const csvFiles = [
+        { phase: 1, file: 'product_base.csv', label: '搜索采样' },
+        { phase: 2, file: 'product_small_seller.csv', label: '卖家筛选' },
+        { phase: 3, file: 'product_store_ok.csv', label: '店铺筛选' },
+        { phase: 4, file: 'product_potential.csv', label: '产品详情' },
+        { phase: 5, file: 'product_keyword_ok.csv', label: '关键词分析' },
+      ];
+
+      const stats: Record<string, { count: number; label: string }> = {};
+      for (const csv of csvFiles) {
+        const csvPath = join(sessionDir, csv.file);
+        if (existsSync(csvPath)) {
+          const content = await readFile(csvPath, 'utf-8');
+          const lines = content.trim().split('\n');
+          // Subtract 1 for header
+          stats[`phase${csv.phase}`] = { count: Math.max(0, lines.length - 1), label: csv.label };
+        }
+      }
+
+      return { success: true, stats };
+    } catch (err) {
+      return { success: false, error: String(err) };
+    }
   });
 
   // ── Scheduler ────────────────────────────────────────────────────────────
