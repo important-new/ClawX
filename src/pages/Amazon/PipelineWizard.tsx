@@ -10,6 +10,12 @@ import { PipelinePhaseCard } from './components/PipelinePhaseCard';
 import { PipelineFunnel } from './components/PipelineFunnel';
 import { InterventionModal } from './components/InterventionModal';
 import { MarkdownReport } from './components/MarkdownReport';
+import { ExecutionModeSelector } from './components/ExecutionModeSelector';
+import { QualityCheckPanel } from './components/QualityCheckPanel';
+import { QualityCheckBadge } from './components/QualityCheckBadge';
+import { CaptchaModal } from './components/CaptchaModal';
+import { ProgressMultiLevel } from './components/ProgressMultiLevel';
+import type { PipelinePhase } from './types/pipeline';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
@@ -45,6 +51,15 @@ const MARKETS = [
 
 const STEPS = ['config', 'filters', 'execute', 'results'] as const;
 const STEP_LABELS = ['会话配置', '筛选参数', '执行监控', '结果查看'];
+
+const PHASE_NUM_TO_ID: Record<number, PipelinePhase> = {
+  1: 'category_sampling',
+  2: 'seller_verification',
+  3: 'store_check',
+  4: 'product_detail',
+  5: 'keyword_research',
+  6: 'report_generation',
+};
 
 export function PipelineWizard() {
   const navigate = useNavigate();
@@ -114,15 +129,38 @@ export function PipelineWizard() {
         phase: store.currentPhaseIndex,
         message: data.message,
       });
+      // Trigger captcha tracking in store
+      if (data.type === 'captcha') {
+        usePipelineStore.getState().triggerCaptcha();
+      }
       toast.warning('流程已暂停：需要手动干预');
+    };
+
+    const handleQcResult = (_: any, result: any) => {
+      if (result?.phase && 'pass' in result) {
+        usePipelineStore.getState().setQualityCheckResult(result.phase, result);
+      }
+    };
+
+    const handlePhaseSignal = (_: any, signal: any) => {
+      usePipelineStore.getState().updatePhaseProgress({
+        phase: signal.phase,
+        phaseStep: signal.step,
+        percent: usePipelineStore.getState().overallProgress,
+        message: `${signal.phase}: ${signal.step}`,
+      });
     };
 
     const unprogress = window.electron.ipcRenderer.on('amazon:workflowProgress', handleProgress);
     const unintervention = window.electron.ipcRenderer.on('amazon:workflowIntervention', handleIntervention);
+    const unqc = window.electron.ipcRenderer.on('amazon:qualityCheckResult', handleQcResult);
+    const unphase = window.electron.ipcRenderer.on('amazon:phaseProgress', handlePhaseSignal);
 
     return () => {
       if (typeof unprogress === 'function') unprogress();
       if (typeof unintervention === 'function') unintervention();
+      if (typeof unqc === 'function') unqc();
+      if (typeof unphase === 'function') unphase();
     };
   }, []);
 
@@ -336,6 +374,9 @@ export function PipelineWizard() {
           </div>
         </div>
 
+        {/* Execution Mode */}
+        <ExecutionModeSelector />
+
         {/* Market Selection */}
         <div className="space-y-3">
           <h3 className="text-[11px] font-bold text-muted-foreground uppercase tracking-[0.2em] ml-2">目标市场</h3>
@@ -461,6 +502,9 @@ export function PipelineWizard() {
         </div>
 
         <div className="flex-1 overflow-y-auto pr-3 -mr-3 custom-scrollbar min-h-0 pb-6 space-y-6">
+          {/* Multi-level progress */}
+          <ProgressMultiLevel />
+
           {/* Progress bar */}
           <div className="space-y-2">
             <div className="flex items-center justify-between text-xs font-medium">
@@ -483,15 +527,21 @@ export function PipelineWizard() {
           {/* Phase timeline */}
           <div className="space-y-0">
             {enabledPhases.map((phase, idx) => (
-              <PipelinePhaseCard
-                key={phase.id}
-                phase={phase.phase}
-                name={phase.name}
-                status={phase.status}
-                productCount={phase.productCount}
-                error={phase.error}
-                isLast={idx === enabledPhases.length - 1}
-              />
+              <div key={phase.id} className="flex items-center gap-2">
+                <div className="flex-1">
+                  <PipelinePhaseCard
+                    phase={phase.phase}
+                    name={phase.name}
+                    status={phase.status}
+                    productCount={phase.productCount}
+                    error={phase.error}
+                    isLast={idx === enabledPhases.length - 1}
+                  />
+                </div>
+                {PHASE_NUM_TO_ID[phase.phase] && (
+                  <QualityCheckBadge phase={PHASE_NUM_TO_ID[phase.phase]} />
+                )}
+              </div>
             ))}
             {/* Skipped phases */}
             {store.phases.filter(p => !p.enabled).map((phase, idx, arr) => (
@@ -566,6 +616,11 @@ export function PipelineWizard() {
             <PipelineFunnel items={funnelItems} />
           </div>
 
+          {/* Quality Check Results */}
+          <div className="p-6 rounded-3xl border bg-card">
+            <QualityCheckPanel />
+          </div>
+
           {/* Report */}
           {store.reportContent ? (
             <div className="p-6 rounded-3xl border bg-card space-y-4">
@@ -616,16 +671,7 @@ export function PipelineWizard() {
     <div className="flex flex-col h-full max-w-6xl mx-auto w-full relative">
       <AmazonBreadcrumbs currentMode="Pipeline 向导" items={breadcrumbItems} />
 
-      <AnimatePresence>
-        {store.intervention && (
-          <InterventionModal
-            type={store.intervention.type}
-            phaseName={store.phases.find(p => p.phase === store.intervention!.phase + 1)?.name}
-            onResume={handleResume}
-            onStop={handleStop}
-          />
-        )}
-      </AnimatePresence>
+      <CaptchaModal onResume={handleResume} onStop={handleStop} />
 
       <div className="flex-1 flex flex-col bg-card/40 backdrop-blur-md border rounded-[32px] shadow-sm overflow-hidden relative min-h-0">
         <div className="p-6 sm:p-10 flex flex-col h-full overflow-hidden">
