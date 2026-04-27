@@ -1,6 +1,10 @@
 import { spawn, ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 
+const PHASE_RE = /^PHASE:\s*(\S+)\s+(\S+)/;
+const QC_RESULT_RE = /^QC_RESULT:\s*(.+)/;
+const CAPTCHA_SIGNAL_RE = /^CAPTCHA:\s*(\S+)/;
+
 export interface ExecutionResult {
   code: number | null;
   signal: string | null;
@@ -39,10 +43,34 @@ export class ToolExecutor extends EventEmitter {
         }
 
         // Parse PAUSED (CAPTCHA DETECTED)
-        if (output.includes('PROGRESS: PAUSED (CAPTCHA DETECTED)') || 
-            output.includes('PROGRESS: PAUSED (AMAZON CAPTCHA)') || 
+        if (output.includes('PROGRESS: PAUSED (CAPTCHA DETECTED)') ||
+            output.includes('PROGRESS: PAUSED (AMAZON CAPTCHA)') ||
             output.includes('PROGRESS: PAUSED (SS CAPTCHA)')) {
           this.emit('intervention', { type: 'captcha' });
+        }
+
+        // Line-by-line signal parsing
+        for (const line of output.split('\n')) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+
+          const phaseMatch = trimmed.match(PHASE_RE);
+          if (phaseMatch) {
+            this.emit('phase-signal', { phase: phaseMatch[1], step: phaseMatch[2] });
+          }
+
+          const qcMatch = trimmed.match(QC_RESULT_RE);
+          if (qcMatch) {
+            try {
+              const result = JSON.parse(qcMatch[1]);
+              this.emit('qc-result', result);
+            } catch { /* ignore malformed JSON */ }
+          }
+
+          const captchaMatch = trimmed.match(CAPTCHA_SIGNAL_RE);
+          if (captchaMatch) {
+            this.emit('intervention', { type: 'captcha' });
+          }
         }
       });
 
