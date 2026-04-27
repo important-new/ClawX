@@ -114,6 +114,19 @@ export function getAmazonSkillsDir(): string {
 }
 
 /**
+ * Get bundled Python directory (if offline Python was pre-downloaded)
+ * - Production (packaged): from resources/python/<platform>
+ * - Development: from resources/python/<platform>
+ */
+export function getBundledPythonDir(): string | null {
+  const target = `${process.platform}-${process.arch}`;
+  const dir = getElectronApp().isPackaged
+    ? join(process.resourcesPath, 'resources', 'python', target)
+    : join(__dirname, '../../resources/python', target);
+  return existsSync(dir) ? dir : null;
+}
+
+/**
  * Get preload script path
  */
 export function getPreloadPath(): string {

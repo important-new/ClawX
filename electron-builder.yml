@@ -26,6 +26,13 @@ extraResources:
   # because electron-builder respects .gitignore which excludes node_modules/)
   - from: build/openclaw/
     to: openclaw/
+  # Bundled Python runtime (optional, for offline use)
+  - from: resources/python/
+    to: resources/python/
+    filter:
+      - "**/*"
+      - "!**/__pycache__/**"
+      - "!**/*.pyc"
   # Amazon selection assistant skills (junction/symlink in dev, copied at build)
   - from: resources/amazon-skills/
     to: resources/amazon-skills/

@@ -73,6 +73,8 @@ package-lock.json
 
 # Amazon skills (junction/symlink to external dev directory)
 resources/amazon-skills
+# Bundled Python runtime (downloaded at build time)
+resources/python
 
 # Generated extension bridges (created by scripts/generate-ext-bridge.mjs)
 electron/extensions/_ext-bridge.generated.ts

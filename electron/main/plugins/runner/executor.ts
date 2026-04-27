@@ -1,6 +1,7 @@
 import { spawn, ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { getAmazonSkillsDir } from '../../../utils/paths';
+import { getAmazonSkillsDir, getBundledPythonDir, quoteForCmd, needsWinShell } from '../../../utils/paths';
+import { resolveUvBin } from '../../../utils/uv-setup';
 
 const PHASE_RE = /^PHASE:\s*(\S+)\s+(\S+)/;
 const QC_RESULT_RE = /^QC_RESULT:\s*(.+)/;
@@ -22,13 +23,21 @@ export class ToolExecutor extends EventEmitter {
     cwd: string = getAmazonSkillsDir()
   ): Promise<ExecutionResult> {
     const formattedArgs = this.formatArgs(args);
+    const { bin: uvBin } = resolveUvBin();
+    const useShell = needsWinShell(uvBin);
+    const env: Record<string, string | undefined> = { ...process.env, PYTHONIOENCODING: 'utf-8' };
+    // If a bundled Python exists, tell uv to use it instead of downloading
+    const bundledPython = getBundledPythonDir();
+    if (bundledPython) {
+      env.UV_PYTHON = bundledPython;
+    }
     return new Promise((resolve) => {
       // Use uv run to execute the python script
       // e.g., uv run path/to/script.py --session mysession
-      this.process = spawn('uv', ['run', toolPath, ...formattedArgs], {
+      this.process = spawn(useShell ? quoteForCmd(uvBin) : uvBin, ['run', toolPath, ...formattedArgs], {
         cwd,
-        shell: true,
-        env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
+        shell: useShell,
+        env,
       });
 
       this.process.stdout?.on('data', (data) => {
