@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { getAmazonSkillsDir } from '../../../utils/paths';
 
 export interface PluginTool {
   id: string; // Relative path or unique ID
@@ -12,9 +13,8 @@ export interface PluginTool {
   outputs: string[];
 }
 
-const AMAZON_SKILLS_PATH = 'd:\\Code\\amazon\\.agent\\skills';
-
 export function scanTools(): PluginTool[] {
+  const AMAZON_SKILLS_PATH = getAmazonSkillsDir();
   const tools: PluginTool[] = [];
   if (!fs.existsSync(AMAZON_SKILLS_PATH)) {
     console.warn(`[Scanner] Amazon skills path not found: ${AMAZON_SKILLS_PATH}`);

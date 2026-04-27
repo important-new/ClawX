@@ -31,7 +31,7 @@ import { exec } from 'child_process';
 const execAsync = promisify(exec);
 import { GatewayManager } from '../gateway/manager';
 import { readOpenClawConfig, writeOpenClawConfig } from '../utils/channel-config';
-import { getOpenClawSkillsDir } from '../utils/paths';
+import { getOpenClawSkillsDir, getAmazonSkillsDir } from '../utils/paths';
 import { logger } from '../utils/logger';
 import { scanTools } from './plugins/runner/scanner';
 import { ToolExecutor } from './plugins/runner/executor';
@@ -500,7 +500,7 @@ export function registerAmazonHandlers(gatewayManager: GatewayManager, mainWindo
         if (filterArgs.length > 0) {
           try {
             const session = step.args['session'] || 'default';
-            const tempDir = join(join('d:\\Code\\amazon\\.agent\\skills', 'report'), 'sessions', session);
+            const tempDir = join(join(getAmazonSkillsDir(), 'report'), 'sessions', session);
             if (!existsSync(tempDir)) await mkdir(tempDir, { recursive: true });
             
             const tempFiltersPath = join(tempDir, `wizard_filters_${step.toolId.replace(/:/g, '_')}.json`);

@@ -71,6 +71,9 @@ docs/pr-session-notes-*.md
 .pnpm-store/
 package-lock.json
 
+# Amazon skills (junction/symlink to external dev directory)
+resources/amazon-skills
+
 # Generated extension bridges (created by scripts/generate-ext-bridge.mjs)
 electron/extensions/_ext-bridge.generated.ts
 src/extensions/_ext-bridge.generated.ts

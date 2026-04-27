@@ -102,6 +102,18 @@ export function getResourcesDir(): string {
 }
 
 /**
+ * Get Amazon skills directory
+ * - Production (packaged): from resources/amazon-skills (copied by electron-builder extraResources)
+ * - Development: from resources/amazon-skills (junction/symlink to external dir)
+ */
+export function getAmazonSkillsDir(): string {
+  if (getElectronApp().isPackaged) {
+    return join(process.resourcesPath, 'resources', 'amazon-skills');
+  }
+  return join(__dirname, '../../resources/amazon-skills');
+}
+
+/**
  * Get preload script path
  */
 export function getPreloadPath(): string {
