@@ -283,3 +283,29 @@ export async function getAmazonSessionStats(sessionName: string) {
     'amazon:getSessionStats', sessionName
   );
 }
+
+export async function runAmazonProfitCalculator(args: {
+  sessionName: string;
+  margin?: number;
+  ppcRate?: number;
+  onsitePromo?: number;
+  offsitePromo?: number;
+  referral?: number | null;
+  tariff?: number;
+  freightRate?: number;
+  exchangeRate?: number;
+  storageMonths?: number;
+  otherCostCny?: number;
+  returnRate?: number;
+  resellableRatio?: number;
+  returnFee?: number;
+  buyerShipping?: number;
+}) {
+  return await invokeIpc<{
+    success: boolean;
+    products?: any[];
+    summary?: { total: number; viable: number; not_viable: number };
+    config?: Record<string, any>;
+    error?: string;
+  }>('amazon:runProfitCalculator', args);
+}

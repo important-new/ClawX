@@ -15,7 +15,8 @@ import { QualityCheckBadge } from './components/QualityCheckBadge';
 import { CaptchaModal } from './components/CaptchaModal';
 import { ProgressMultiLevel } from './components/ProgressMultiLevel';
 import { SessionSelector } from './components/SessionSelector';
-import { ProfitSimulator } from './components/ProfitSimulator';
+import { ProfitCalculator } from './components/ProfitCalculator';
+import { BatchProfitPanel } from './components/BatchProfitPanel';
 import type { PipelinePhase } from './types/pipeline';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -652,13 +653,13 @@ export function PipelineWizard() {
             </div>
           )}
 
-          {/* Profit Simulator */}
+          {/* Batch Profit Assessment */}
           {Object.values(store.stats).some((s: any) => s.count > 0) && (
-            <div className="p-6 rounded-3xl border bg-card space-y-4">
-              <h3 className="text-sm font-bold flex items-center gap-2">利润模拟 (示例)</h3>
-              <ProfitSimulator sellingPrice={59.99} monthlyUnits={450} />
-            </div>
+            <BatchProfitPanel sessionName={store.sessionName} />
           )}
+
+          {/* Standalone Profit Calculator */}
+          <ProfitCalculator />
 
           {/* Actions */}
           <div className="flex gap-3">

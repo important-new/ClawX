@@ -749,6 +749,63 @@ export function registerAmazonHandlers(gatewayManager: GatewayManager, mainWindo
     return sessions.sort((a, b) => b.date.localeCompare(a.date));
   });
 
+  // ── Profit Calculator (batch) ────────────────────────────────────────────
+  ipcMain.handle('amazon:runProfitCalculator', async (_, args: {
+    sessionName: string;
+    margin?: number;
+    ppcRate?: number;
+    onsitePromo?: number;
+    offsitePromo?: number;
+    referral?: number | null;
+    tariff?: number;
+    freightRate?: number;
+    exchangeRate?: number;
+    storageMonths?: number;
+    otherCostCny?: number;
+    returnRate?: number;
+    resellableRatio?: number;
+    returnFee?: number;
+    buyerShipping?: number;
+  }) => {
+    const AMAZON_ROOT = 'd:\\Code\\amazon';
+    const sessionsBase = join(AMAZON_ROOT, '.agent', 'skills', 'report', 'sessions');
+    const sessionDir = join(sessionsBase, args.sessionName);
+    const script = join(AMAZON_ROOT, '.agent', 'skills', 'scraper-pipeline', 'scripts', 'profit_calculator.py');
+
+    if (!existsSync(sessionDir)) {
+      return { success: false, error: `Session not found: ${args.sessionName}` };
+    }
+
+    const cliArgs = ['python', script, sessionDir, '--json'];
+    if (args.margin != null) cliArgs.push('--margin', String(args.margin));
+    if (args.ppcRate != null) cliArgs.push('--ppc-rate', String(args.ppcRate));
+    if (args.onsitePromo != null) cliArgs.push('--onsite-promo', String(args.onsitePromo));
+    if (args.offsitePromo != null) cliArgs.push('--offsite-promo', String(args.offsitePromo));
+    if (args.referral != null) cliArgs.push('--referral', String(args.referral));
+    if (args.tariff != null) cliArgs.push('--tariff', String(args.tariff));
+    if (args.freightRate != null) cliArgs.push('--freight-rate', String(args.freightRate));
+    if (args.exchangeRate != null) cliArgs.push('--exchange-rate', String(args.exchangeRate));
+    if (args.storageMonths != null) cliArgs.push('--storage-months', String(args.storageMonths));
+    if (args.otherCostCny != null) cliArgs.push('--other-cost', String(args.otherCostCny));
+    if (args.returnRate != null) cliArgs.push('--return-rate', String(args.returnRate));
+    if (args.resellableRatio != null) cliArgs.push('--resellable-ratio', String(args.resellableRatio));
+    if (args.returnFee != null) cliArgs.push('--return-fee', String(args.returnFee));
+    if (args.buyerShipping != null) cliArgs.push('--buyer-shipping', String(args.buyerShipping));
+
+    try {
+      const { stdout } = await execAsync(cliArgs.join(' '), {
+        cwd: AMAZON_ROOT,
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
+        timeout: 60_000,
+      });
+      const result = JSON.parse(stdout);
+      return { success: true, ...result };
+    } catch (err: any) {
+      logger.error(`[amazon] profit calculator failed: ${err.message}`);
+      return { success: false, error: err.stderr || err.message };
+    }
+  });
+
   // ── Scheduler ────────────────────────────────────────────────────────────
   try {
     if (scheduler && typeof scheduler.start === 'function') {
