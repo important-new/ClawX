@@ -16,8 +16,9 @@ export function useQualityCheck() {
   const setQualityCheckStatus = usePipelineStore((s) => s.setQualityCheckStatus);
 
   useEffect(() => {
-    const cleanup = window.electronAPI?.on('amazon:qualityCheckResult', (_event: unknown, result: QualityCheckResult) => {
-      setQualityCheckResult(result.phase, result);
+    const cleanup = window.electronAPI?.on('amazon:qualityCheckResult', (_event: unknown, result: unknown) => {
+      const typedResult = result as QualityCheckResult;
+      setQualityCheckResult(typedResult.phase, typedResult);
     });
     return cleanup;
   }, [setQualityCheckResult]);

@@ -8,7 +8,6 @@ import { AmazonBreadcrumbs } from './components/AmazonBreadcrumbs';
 import { PipelineFilterForm } from './components/PipelineFilterForm';
 import { PipelinePhaseCard } from './components/PipelinePhaseCard';
 import { PipelineFunnel } from './components/PipelineFunnel';
-import { InterventionModal } from './components/InterventionModal';
 import { MarkdownReport } from './components/MarkdownReport';
 import { ExecutionModeSelector } from './components/ExecutionModeSelector';
 import { QualityCheckPanel } from './components/QualityCheckPanel';
