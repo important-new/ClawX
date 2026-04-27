@@ -1,6 +1,6 @@
 {
     "name": "clawx",
-    "version": "0.3.10",
+    "version": "0.3.11",
     "pnpm": {
         "onlyBuiltDependencies": [
             "@discordjs/opus",
@@ -32,6 +32,7 @@
     "license": "MIT",
     "private": true,
     "scripts": {
+        "postinstall": "node scripts/patch-browser-hint.mjs",
         "init": "pnpm install && pnpm run uv:download",
         "predev": "node scripts/generate-ext-bridge.mjs && zx scripts/prepare-preinstalled-skills-dev.mjs",
         "dev": "vite",
@@ -76,10 +77,14 @@
         "clawhub": "^0.5.0",
         "electron-store": "^11.0.2",
         "electron-updater": "^6.8.3",
+        "katex": "^0.16.45",
         "lru-cache": "^11.2.6",
         "ms": "^2.1.3",
         "node-machine-id": "^1.1.12",
         "posthog-node": "^5.28.0",
+        "tar": "^6.2.1",
+        "rehype-katex": "^7.0.1",
+        "remark-math": "^6.0.0",
         "ws": "^8.19.0"
     },
     "devDependencies": {

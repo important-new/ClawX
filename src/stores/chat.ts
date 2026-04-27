@@ -60,6 +60,7 @@ let _loadSessionsInFlight: Promise<void> | null = null;
 let _lastLoadSessionsAt = 0;
 const _historyLoadInFlight = new Map<string, Promise<void>>();
 const _lastHistoryLoadAtBySession = new Map<string, number>();
+const _forceNextHistoryLoadBySession = new Set<string>();
 const _foregroundHistoryLoadSeen = new Set<string>();
 const SESSION_LOAD_MIN_INTERVAL_MS = 1_200;
 const HISTORY_LOAD_MIN_INTERVAL_MS = 800;
@@ -79,6 +80,10 @@ function clearHistoryPoll(): void {
     clearTimeout(_historyPollTimer);
     _historyPollTimer = null;
   }
+}
+
+function forceNextHistoryLoad(sessionKey: string): void {
+  _forceNextHistoryLoadBySession.add(sessionKey);
 }
 
 function pruneChatEventDedupe(now: number): void {
@@ -230,8 +235,31 @@ function normalizeStreamingMessage(message: unknown): unknown {
     : rawMessage;
 }
 
+/**
+ * Strip Gateway-injected metadata that does NOT exist on the renderer's
+ * optimistic user message but is echoed back when the Gateway persists it:
+ *   - leading timestamp `[Wed 2026-04-22 10:30 GMT+8] `
+ *   - `[message_id: uuid]` tags sprinkled throughout the text
+ *   - `[media attached: path (mime) | path]` references appended when the
+ *     renderer sends attachments via `chat:sendWithMedia`
+ *   - Gateway-injected "Conversation info (untrusted metadata): ..." blocks
+ *
+ * Keeping this aligned with `cleanUserText` in `pages/Chat/message-utils.ts`
+ * is important: the user bubble renders the cleaned text, so the comparison
+ * used to dedupe optimistic vs server echoes must operate on the same
+ * cleaned form — otherwise the same visible message renders twice.
+ */
+function stripGatewayUserMetadata(text: string): string {
+  return text
+    .replace(/^\s*\[(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}\s+[^\]]+\]\s*/i, '')
+    .replace(/\s*\[media attached:[^\]]*\]/g, '')
+    .replace(/\s*\[message_id:\s*[^\]]+\]/g, '')
+    .replace(/^Conversation info\s*\([^)]*\):\s*```[a-z]*\n[\s\S]*?```\s*/i, '')
+    .replace(/^Conversation info\s*\([^)]*\):\s*\{[\s\S]*?\}\s*/i, '');
+}
+
 function normalizeComparableUserText(content: unknown): string {
-  return getMessageText(content)
+  return stripGatewayUserMetadata(getMessageText(content))
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -934,9 +962,39 @@ function isToolResultRole(role: unknown): boolean {
 /** True for internal plumbing messages that should never be shown in the UI. */
 function isInternalMessage(msg: { role?: unknown; content?: unknown }): boolean {
   if (msg.role === 'system') return true;
+  const text = getMessageText(msg.content);
   if (msg.role === 'assistant') {
-    const text = getMessageText(msg.content);
     if (/^(HEARTBEAT_OK|NO_REPLY)\s*$/.test(text)) return true;
+  }
+  // Runtime system injections: these arrive as user or assistant-role messages
+  // but are internal plumbing (exec results, async-command notices, time pings, etc.)
+  if ((msg.role === 'user' || msg.role === 'assistant') && isRuntimeSystemInjection(text)) return true;
+  return false;
+}
+
+/**
+ * Detect runtime-injected system messages that should be hidden from the chat UI.
+ * These are injected by the OpenClaw runtime as user-role messages and include:
+ *   - "System (untrusted): ..." — exec results, tool output, etc.
+ *   - "An async command you ran earlier has completed" — async completion notices
+ *   - "Current time: ..." followed by nothing else — periodic heartbeat time pings
+ *   - "Handle the result internally. Do not relay it to the user" — internal directives
+ */
+function isRuntimeSystemInjection(text: string): boolean {
+  if (!text) return false;
+  const normalized = text.trim();
+  if (/^\s*System\s*\(untrusted\)\s*:/i.test(normalized)) return true;
+  if (
+    /An async command you ran earlier has completed/i.test(normalized)
+    && /Do not relay it to the user unless explicitly requested/i.test(normalized)
+  ) {
+    return true;
+  }
+  if (
+    /^\s*Current time\s*:/i.test(normalized)
+    && /^\s*Current time\s*:[^\n]*\/\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}\s+UTC\s*$/i.test(normalized)
+  ) {
+    return true;
   }
   return false;
 }
@@ -1470,14 +1528,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const { currentSessionKey } = get();
     const isInitialForegroundLoad = !quiet && !_foregroundHistoryLoadSeen.has(currentSessionKey);
     const historyTimeoutOverride = getStartupHistoryTimeoutOverride(isInitialForegroundLoad);
+    const forceLoad = _forceNextHistoryLoadBySession.delete(currentSessionKey);
     const existingLoad = _historyLoadInFlight.get(currentSessionKey);
     if (existingLoad) {
       await existingLoad;
-      return;
+      if (!forceLoad) {
+        return;
+      }
+      if (get().currentSessionKey !== currentSessionKey) {
+        return;
+      }
     }
 
     const lastLoadAt = _lastHistoryLoadAtBySession.get(currentSessionKey) || 0;
-    if (quiet && Date.now() - lastLoadAt < HISTORY_LOAD_MIN_INTERVAL_MS) {
+    if (!forceLoad && quiet && Date.now() - lastLoadAt < HISTORY_LOAD_MIN_INTERVAL_MS) {
       return;
     }
 
@@ -2029,6 +2093,26 @@ export const useChatStore = create<ChatState>((set, get) => ({
         if (finalMsg) {
           const normalizedFinalMessage = normalizeStreamingMessage(finalMsg) as RawMessage;
           const updates = collectToolUpdates(normalizedFinalMessage, resolvedState);
+          // Filter out internal-only final responses (NO_REPLY, HEARTBEAT_OK, etc.)
+          // before adding to messages. Without this guard, the internal token appears
+          // briefly in the UI until loadHistory replaces the message list — and if the
+          // quiet-mode reload is debounced away, the token can stay visible permanently.
+          if (isInternalMessage(normalizedFinalMessage)) {
+            const sessionKeyForReload = get().currentSessionKey;
+            set({
+              streamingText: '',
+              streamingMessage: null,
+              sending: false,
+              activeRunId: null,
+              pendingFinal: false,
+              streamingTools: [],
+              pendingToolImages: [],
+            });
+            clearHistoryPoll();
+            forceNextHistoryLoad(sessionKeyForReload);
+            void get().loadHistory(true);
+            break;
+          }
           if (isToolResultRole(normalizedFinalMessage.role)) {
             // Resolve file path from the streaming assistant message's matching tool call
             const currentStreamForPath = get().streamingMessage as RawMessage | null;
