@@ -1,72 +1,376 @@
+// src/pages/Amazon/components/PipelineFilterForm.tsx
 import { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 
+// ─── Field type definitions ──────────────────────────────────────────────────
+
+type FieldType = 'range' | 'range-pct' | 'range-usd' | 'range-weight' | 'select' | 'text' | 'checkbox' | 'radio' | 'checkbox-group';
+
+interface FilterFieldBase {
+  label: string;
+  type: FieldType;
+}
+
+interface RangeField extends FilterFieldBase {
+  type: 'range' | 'range-pct' | 'range-usd' | 'range-weight';
+  keyMin: string;
+  keyMax: string;
+}
+
+interface SelectField extends FilterFieldBase {
+  type: 'select';
+  key: string;
+  options: string[];
+}
+
+interface TextField extends FilterFieldBase {
+  type: 'text';
+  key: string;
+  placeholder?: string;
+}
+
+interface CheckboxField extends FilterFieldBase {
+  type: 'checkbox';
+  key: string;
+}
+
+interface RadioField extends FilterFieldBase {
+  type: 'radio';
+  key: string;
+  options: string[];
+}
+
+interface CheckboxGroupField extends FilterFieldBase {
+  type: 'checkbox-group';
+  items: { key: string; label: string }[];
+}
+
+type FilterField = RangeField | SelectField | TextField | CheckboxField | RadioField | CheckboxGroupField;
+
 interface FilterGroup {
-  phase: number;
+  id: string;
   title: string;
+  phase?: number;
   fields: FilterField[];
 }
 
-interface FilterField {
-  key: string;
-  label: string;
-  type: 'number' | 'string';
-  step?: number;
-  min?: number;
-  max?: number;
-  help?: string;
-}
+// ─── SellerSprite-aligned filter groups ───────────────────────────────────────
 
-const FILTER_GROUPS: FilterGroup[] = [
+const LISTING_AGE_OPTIONS = [
+  '不限', '近30天', '近60天', '近3个月', '近半年',
+  '近1年', '近2年', '近1~2年', '近3年', '近4年', '近3~4年', '4年以上',
+];
+
+const PKG_SIZE_OPTIONS = ['不限', '标准', '大件', '超大件'];
+
+const MONTH_OPTIONS = (() => {
+  const opts = ['最近30天'];
+  const now = new Date();
+  for (let i = 0; i < 24; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    opts.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  }
+  return opts;
+})();
+
+const VIDEO_OPTIONS = ['不限', '含视频', '不含视频'];
+const KEYWORD_MATCH_OPTIONS = ['模糊匹配', '词组匹配', '精准匹配'];
+
+const PHASE1_GROUPS: FilterGroup[] = [
   {
-    phase: 1,
-    title: 'Phase 1 — 搜索条件',
+    id: 'month',
+    title: '选择月份',
     fields: [
-      { key: 's1_min_sales', label: '最低月销量', type: 'number', min: 0 },
-      { key: 's1_min_price', label: '最低价格 ($)', type: 'number', min: 0 },
-      { key: 's1_max_price', label: '最高价格 ($)', type: 'number', min: 0 },
-      { key: 's1_min_rating', label: '最低评分', type: 'number', min: 0, max: 5, step: 0.1 },
-      { key: 's1_max_new_months', label: '新品月数上限', type: 'number', min: 1 },
+      { label: '月份', type: 'select', key: 'month', options: MONTH_OPTIONS },
     ],
   },
   {
-    phase: 2,
-    title: 'Phase 2 — 卖家筛选',
+    id: 'sales',
+    title: '销售表现',
     fields: [
-      { key: 'max_seller_reviews', label: '最大历史评价数', type: 'number', min: 0, help: '筛选小卖家：排除评价数过高的老牌卖家' },
+      { label: '月销量', type: 'range', keyMin: 'monthly_sales_min', keyMax: 'monthly_sales_max' },
+      { label: '月销售额', type: 'range-usd', keyMin: 'monthly_revenue_min', keyMax: 'monthly_revenue_max' },
+      { label: '子体销量', type: 'range', keyMin: 'child_sales_min', keyMax: 'child_sales_max' },
+      { label: '月销量增长率', type: 'range-pct', keyMin: 'sales_growth_min', keyMax: 'sales_growth_max' },
+      { label: 'BSR', type: 'range', keyMin: 'bsr_min', keyMax: 'bsr_max' },
+      { label: '小类BSR', type: 'range', keyMin: 'sub_bsr_min', keyMax: 'sub_bsr_max' },
+      { label: '只看该子类目排名', type: 'checkbox', key: 'sub_category_only' },
+      { label: 'BSR增长数', type: 'range', keyMin: 'bsr_growth_num_min', keyMax: 'bsr_growth_num_max' },
+      { label: 'BSR增长率', type: 'range-pct', keyMin: 'bsr_growth_rate_min', keyMax: 'bsr_growth_rate_max' },
     ],
   },
   {
-    phase: 3,
-    title: 'Phase 3 — 店铺筛选',
+    id: 'product',
+    title: '产品信息',
     fields: [
-      { key: 'min_store_listing_count', label: '最少店铺商品数', type: 'number', min: 1 },
-      { key: 'max_high_sales_ratio', label: '成熟产品比例上限', type: 'number', min: 0, max: 1, step: 0.05, help: '高销量产品占比不超过此值' },
-      { key: 'high_sales_threshold', label: '高销量阈值', type: 'number', min: 0, help: '月销量超过此值视为高销量' },
+      { label: '变体数', type: 'range', keyMin: 'variants_min', keyMax: 'variants_max' },
+      { label: '价格', type: 'range-usd', keyMin: 'price_min', keyMax: 'price_max' },
+      { label: 'Q&A', type: 'range', keyMin: 'qa_min', keyMax: 'qa_max' },
+      { label: '评分数', type: 'range', keyMin: 'review_count_min', keyMax: 'review_count_max' },
+      { label: '月评新增', type: 'range', keyMin: 'monthly_reviews_min', keyMax: 'monthly_reviews_max' },
+      { label: '评分值', type: 'range', keyMin: 'rating_min', keyMax: 'rating_max' },
+      { label: '留评率', type: 'range-pct', keyMin: 'review_rate_min', keyMax: 'review_rate_max' },
+      { label: 'FBA运费', type: 'range-usd', keyMin: 'fba_fee_min', keyMax: 'fba_fee_max' },
+      { label: '毛利率', type: 'range-pct', keyMin: 'gross_margin_min', keyMax: 'gross_margin_max' },
+      { label: '上架时间', type: 'select', key: 'listing_age', options: LISTING_AGE_OPTIONS },
+      { label: 'LQS', type: 'range', keyMin: 'lqs_min', keyMax: 'lqs_max' },
+      { label: '包装重量', type: 'range-weight', keyMin: 'pkg_weight_min', keyMax: 'pkg_weight_max' },
+      { label: '包装尺寸', type: 'select', key: 'pkg_size', options: PKG_SIZE_OPTIONS },
+      { label: '买家运费', type: 'range-usd', keyMin: 'buyer_shipping_min', keyMax: 'buyer_shipping_max' },
+      { label: '低价商品', type: 'checkbox', key: 'low_price' },
     ],
   },
   {
-    phase: 4,
-    title: 'Phase 4 — 产品详情筛选',
+    id: 'compete',
+    title: '竞品筛选',
     fields: [
-      { key: 'max_launch_reviews', label: '上架评论数上限', type: 'number', min: 0 },
-      { key: 'max_review_jumps', label: '评论跳涨次数上限', type: 'number', min: 0 },
-      { key: 'review_jump_threshold', label: '跳涨检测阈值', type: 'number', min: 1 },
-      { key: 'min_3m_reviews', label: '3 月评论最少', type: 'number', min: 0 },
-      { key: 'max_3m_reviews', label: '3 月评论最多', type: 'number', min: 0 },
-    ],
-  },
-  {
-    phase: 5,
-    title: 'Phase 5 — 关键词筛选',
-    fields: [
-      { key: 'max_min_ppc', label: 'PPC 最小值上限 ($)', type: 'number', min: 0, step: 0.1, help: '广告成本：排除 PPC 过高的品类' },
-      { key: 'max_comp_reviews', label: '竞品评论数上限', type: 'number', min: 0, help: '排除评论数过高的竞品' },
+      { label: '卖家数量', type: 'range', keyMin: 'seller_count_min', keyMax: 'seller_count_max' },
+      { label: '卖家所属地', type: 'text', key: 'seller_location', placeholder: '如: 中国,美国' },
+      { label: '包含品牌', type: 'text', key: 'include_brand', placeholder: '多个以英文逗号区分' },
+      { label: '排除品牌', type: 'text', key: 'exclude_brand', placeholder: '多个以英文逗号区分' },
+      { label: '包含卖家', type: 'text', key: 'include_seller', placeholder: '多个以英文逗号区分' },
+      { label: '排除卖家', type: 'text', key: 'exclude_seller', placeholder: '多个以英文逗号区分' },
+      { label: '排除关键词', type: 'text', key: 'exclude_keyword', placeholder: '多个以英文逗号区分' },
+      { label: '包含关键词', type: 'text', key: 'include_keyword', placeholder: '多个以英文逗号区分' },
+      { label: '关键词匹配', type: 'radio', key: 'keyword_match', options: KEYWORD_MATCH_OPTIONS },
+      { label: '配送方式', type: 'checkbox-group', items: [
+        { key: 'amz', label: 'AMZ' },
+        { key: 'fba', label: 'FBA' },
+        { key: 'fbm', label: 'FBM' },
+      ]},
+      { label: '主图视频', type: 'radio', key: 'video', options: VIDEO_OPTIONS },
+      { label: '商品标识', type: 'text', key: 'product_tags', placeholder: 'BestSeller,AmazonChoice,NewRelease,A+' },
     ],
   },
 ];
+
+const PHASE2_5_GROUPS: FilterGroup[] = [
+  {
+    id: 'phase2',
+    title: 'Phase 2 — 卖家筛选',
+    phase: 2,
+    fields: [
+      { label: '最大历史评价数', type: 'range', keyMin: '_skip', keyMax: 'max_seller_reviews' },
+    ],
+  },
+  {
+    id: 'phase3',
+    title: 'Phase 3 — 店铺筛选',
+    phase: 3,
+    fields: [
+      { label: '最少店铺商品数', type: 'range', keyMin: 'min_store_listing_count', keyMax: '_skip' },
+      { label: '成熟产品比例上限', type: 'range', keyMin: '_skip', keyMax: 'max_high_sales_ratio' },
+      { label: '高销量阈值', type: 'range', keyMin: 'high_sales_threshold', keyMax: '_skip' },
+    ],
+  },
+  {
+    id: 'phase4',
+    title: 'Phase 4 — 产品详情筛选',
+    phase: 4,
+    fields: [
+      { label: '上架评论数上限', type: 'range', keyMin: '_skip', keyMax: 'max_launch_reviews' },
+      { label: '评论跳涨次数上限', type: 'range', keyMin: '_skip', keyMax: 'max_review_jumps' },
+      { label: '跳涨检测阈值', type: 'range', keyMin: 'review_jump_threshold', keyMax: '_skip' },
+      { label: '3 月评论最少', type: 'range', keyMin: 'min_3m_reviews', keyMax: '_skip' },
+      { label: '3 月评论最多', type: 'range', keyMin: '_skip', keyMax: 'max_3m_reviews' },
+    ],
+  },
+  {
+    id: 'phase5',
+    title: 'Phase 5 — 关键词筛选',
+    phase: 5,
+    fields: [
+      { label: 'PPC 最小值上限 ($)', type: 'range', keyMin: '_skip', keyMax: 'max_min_ppc' },
+      { label: '竞品评论数上限', type: 'range', keyMin: '_skip', keyMax: 'max_comp_reviews' },
+    ],
+  },
+];
+
+// ─── Field renderers ─────────────────────────────────────────────────────────
+
+function RangeInput({ field, filters, onChange, suffix }: {
+  field: RangeField; filters: Record<string, any>;
+  onChange: (key: string, value: any) => void; suffix?: string;
+}) {
+  const showMin = field.keyMin !== '_skip';
+  const showMax = field.keyMax !== '_skip';
+
+  return (
+    <div className="flex items-center gap-1.5">
+      {showMin ? (
+        <div className="relative flex-1">
+          <Input
+            type="number"
+            placeholder="最小值"
+            value={filters[field.keyMin] ?? ''}
+            onChange={(e) => onChange(field.keyMin, e.target.value === '' ? null : parseFloat(e.target.value))}
+            className="h-8 rounded-lg text-xs bg-background pr-6"
+          />
+          {suffix && <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">{suffix}</span>}
+        </div>
+      ) : <div className="flex-1" />}
+      {showMin && showMax && <span className="text-xs text-muted-foreground shrink-0">~</span>}
+      {showMax ? (
+        <div className="relative flex-1">
+          <Input
+            type="number"
+            placeholder="最大值"
+            value={filters[field.keyMax] ?? ''}
+            onChange={(e) => onChange(field.keyMax, e.target.value === '' ? null : parseFloat(e.target.value))}
+            className="h-8 rounded-lg text-xs bg-background pr-6"
+          />
+          {suffix && <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">{suffix}</span>}
+        </div>
+      ) : <div className="flex-1" />}
+    </div>
+  );
+}
+
+function FieldRenderer({ field, filters, onChange }: {
+  field: FilterField; filters: Record<string, any>;
+  onChange: (key: string, value: any) => void;
+}) {
+  switch (field.type) {
+    case 'range':
+      return <RangeInput field={field} filters={filters} onChange={onChange} />;
+    case 'range-pct':
+      return <RangeInput field={field} filters={filters} onChange={onChange} suffix="%" />;
+    case 'range-usd':
+      return <RangeInput field={field} filters={filters} onChange={onChange} suffix="$" />;
+    case 'range-weight':
+      return <RangeInput field={field} filters={filters} onChange={onChange} suffix="g" />;
+
+    case 'select': {
+      const f = field as SelectField;
+      return (
+        <select
+          value={filters[f.key] ?? ''}
+          onChange={(e) => onChange(f.key, e.target.value || null)}
+          className="h-8 w-full rounded-lg border bg-background px-2 text-xs"
+        >
+          <option value="">不限</option>
+          {f.options.filter(o => o !== '不限').map((o) => (
+            <option key={o} value={o}>{o}</option>
+          ))}
+        </select>
+      );
+    }
+
+    case 'text': {
+      const f = field as TextField;
+      return (
+        <Input
+          type="text"
+          placeholder={f.placeholder}
+          value={filters[f.key] ?? ''}
+          onChange={(e) => onChange(f.key, e.target.value || null)}
+          className="h-8 rounded-lg text-xs bg-background"
+        />
+      );
+    }
+
+    case 'checkbox': {
+      const f = field as CheckboxField;
+      return (
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={!!filters[f.key]}
+            onChange={(e) => onChange(f.key, e.target.checked)}
+            className="rounded border-muted-foreground"
+          />
+          <span className="text-xs text-muted-foreground">{f.label}</span>
+        </label>
+      );
+    }
+
+    case 'radio': {
+      const f = field as RadioField;
+      return (
+        <div className="flex flex-wrap gap-2">
+          {f.options.map((o) => (
+            <label key={o} className="flex items-center gap-1 cursor-pointer">
+              <input
+                type="radio"
+                name={f.key}
+                checked={filters[f.key] === o}
+                onChange={() => onChange(f.key, o)}
+                className="accent-primary"
+              />
+              <span className="text-xs">{o}</span>
+            </label>
+          ))}
+        </div>
+      );
+    }
+
+    case 'checkbox-group': {
+      const f = field as CheckboxGroupField;
+      return (
+        <div className="flex flex-wrap gap-3">
+          {f.items.map((item) => (
+            <label key={item.key} className="flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!!filters[item.key]}
+                onChange={(e) => onChange(item.key, e.target.checked)}
+                className="rounded border-muted-foreground"
+              />
+              <span className="text-xs">{item.label}</span>
+            </label>
+          ))}
+        </div>
+      );
+    }
+  }
+}
+
+// ─── Collapsible group component ─────────────────────────────────────────────
+
+function FilterGroupPanel({ group, filters, onChange, isExpanded, onToggle, disabled }: {
+  group: FilterGroup; filters: Record<string, any>;
+  onChange: (key: string, value: any) => void;
+  isExpanded: boolean; onToggle: () => void; disabled?: boolean;
+}) {
+  return (
+    <div className={cn(
+      'rounded-2xl border overflow-hidden transition-all',
+      disabled ? 'bg-muted/20 opacity-50 pointer-events-none' : 'bg-card'
+    )}>
+      <button
+        className="w-full flex items-center justify-between p-4 hover:bg-muted/30 transition-colors"
+        onClick={onToggle}
+      >
+        <span className="text-sm font-bold">{group.title}</span>
+        <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform', isExpanded && 'rotate-180')} />
+      </button>
+      {isExpanded && (
+        <div className="px-5 pb-5 pt-1 border-t border-dashed space-y-3 bg-muted/5">
+          {group.fields.map((field) => {
+            // Checkbox and checkbox-group render inline (no separate label row)
+            if (field.type === 'checkbox') {
+              return (
+                <div key={(field as CheckboxField).key}>
+                  <FieldRenderer field={field} filters={filters} onChange={onChange} />
+                </div>
+              );
+            }
+            return (
+              <div key={'key' in field ? field.key : (field as RangeField).keyMin}>
+                <div className="text-[11px] font-bold text-muted-foreground mb-1">{field.label}</div>
+                <FieldRenderer field={field} filters={filters} onChange={onChange} />
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main component ──────────────────────────────────────────────────────────
 
 interface PipelineFilterFormProps {
   filters: Record<string, any>;
@@ -75,88 +379,46 @@ interface PipelineFilterFormProps {
 }
 
 export function PipelineFilterForm({ filters, onFilterChange, enabledPhases }: PipelineFilterFormProps) {
-  const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set([1]));
+  const [expanded, setExpanded] = useState<Set<string>>(new Set(['sales']));
 
-  const toggleGroup = (phase: number) => {
-    setExpandedGroups((prev) => {
+  const toggle = (id: string) => {
+    setExpanded((prev) => {
       const next = new Set(prev);
-      if (next.has(phase)) next.delete(phase);
-      else next.add(phase);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
 
   return (
     <div className="space-y-3">
-      {FILTER_GROUPS.map((group) => {
-        const isEnabled = enabledPhases.includes(group.phase);
-        const isExpanded = expandedGroups.has(group.phase);
+      {/* Phase 1: SellerSprite-aligned groups */}
+      <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-[0.2em] ml-2">
+        Phase 1 — 搜索条件 (SellerSprite)
+      </div>
+      {PHASE1_GROUPS.map((g) => (
+        <FilterGroupPanel
+          key={g.id}
+          group={g}
+          filters={filters}
+          onChange={onFilterChange}
+          isExpanded={expanded.has(g.id)}
+          onToggle={() => toggle(g.id)}
+        />
+      ))}
 
-        return (
-          <div
-            key={group.phase}
-            className={cn(
-              'rounded-2xl border overflow-hidden transition-all',
-              isEnabled ? 'bg-card' : 'bg-muted/20 opacity-50 pointer-events-none'
-            )}
-          >
-            <button
-              className="w-full flex items-center justify-between p-4 hover:bg-muted/30 transition-colors"
-              onClick={() => toggleGroup(group.phase)}
-            >
-              <div className="flex items-center gap-3">
-                <div className={cn(
-                  'w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold',
-                  isEnabled ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
-                )}>
-                  {group.phase}
-                </div>
-                <span className="text-sm font-bold">{group.title}</span>
-              </div>
-              <ChevronDown
-                className={cn(
-                  'h-4 w-4 text-muted-foreground transition-transform',
-                  isExpanded && 'rotate-180'
-                )}
-              />
-            </button>
-
-            {isExpanded && (
-              <div className="px-5 pb-5 pt-1 border-t border-dashed grid grid-cols-2 gap-x-6 gap-y-4 bg-muted/5">
-                {group.fields.map((field) => (
-                  <div key={field.key} className="space-y-1.5">
-                    <div className="flex items-center gap-1.5">
-                      <label className="text-[11px] font-bold text-muted-foreground truncate">
-                        {field.label}
-                      </label>
-                      {field.help && (
-                        <div className="group relative">
-                          <div className="w-3.5 h-3.5 rounded-full bg-muted text-muted-foreground flex items-center justify-center text-[9px] font-bold cursor-help">?</div>
-                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-popover border text-[10px] rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-normal w-44 z-50 pointer-events-none">
-                            {field.help}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    <Input
-                      type={field.type === 'number' ? 'number' : 'text'}
-                      value={filters[field.key] ?? ''}
-                      onChange={(e) => {
-                        const val = field.type === 'number' ? parseFloat(e.target.value) : e.target.value;
-                        onFilterChange(field.key, isNaN(val as number) ? 0 : val);
-                      }}
-                      step={field.step}
-                      min={field.min}
-                      max={field.max}
-                      className="h-10 rounded-xl text-xs bg-background"
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        );
-      })}
+      {/* Phase 2-5 groups */}
+      {PHASE2_5_GROUPS.map((g) => (
+        <FilterGroupPanel
+          key={g.id}
+          group={g}
+          filters={filters}
+          onChange={onFilterChange}
+          isExpanded={expanded.has(g.id)}
+          onToggle={() => toggle(g.id)}
+          disabled={g.phase !== undefined && !enabledPhases.includes(g.phase)}
+        />
+      ))}
     </div>
   );
 }
