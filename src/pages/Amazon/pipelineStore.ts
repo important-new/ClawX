@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type {
   ExecutionMode, PipelinePhase, QualityCheckResult,
-  QualityCheckState, CaptchaState, MultiLevelProgress,
+  QualityCheckState, CaptchaState, MultiLevelProgress, SessionInfo,
 } from './types/pipeline';
 
 export interface PhaseConfig {
@@ -53,6 +53,16 @@ export interface PipelineState {
   // Multi-level progress
   progress: MultiLevelProgress;
   updatePhaseProgress: (p: MultiLevelProgress) => void;
+
+  // Dedup sessions
+  dedup: {
+    availableSessions: SessionInfo[];
+    selectedSessions: string[];
+  };
+  setAvailableSessions: (sessions: SessionInfo[]) => void;
+  toggleDedupSession: (name: string) => void;
+  selectAllDedupSessions: () => void;
+  deselectAllDedupSessions: () => void;
 
   // Actions
   setSessionName: (name: string) => void;
@@ -195,6 +205,29 @@ export const usePipelineStore = create<PipelineState>()((set) => ({
 
   progress: { phase: null, phaseStep: 'execute', percent: 0, message: '' },
 
+  dedup: { availableSessions: [], selectedSessions: [] },
+
+  setAvailableSessions: (sessions) =>
+    set({ dedup: { availableSessions: sessions, selectedSessions: sessions.map((s) => s.name) } }),
+
+  toggleDedupSession: (name) =>
+    set((s) => ({
+      dedup: {
+        ...s.dedup,
+        selectedSessions: s.dedup.selectedSessions.includes(name)
+          ? s.dedup.selectedSessions.filter((n) => n !== name)
+          : [...s.dedup.selectedSessions, name],
+      },
+    })),
+
+  selectAllDedupSessions: () =>
+    set((s) => ({
+      dedup: { ...s.dedup, selectedSessions: s.dedup.availableSessions.map((ss) => ss.name) },
+    })),
+
+  deselectAllDedupSessions: () =>
+    set((s) => ({ dedup: { ...s.dedup, selectedSessions: [] } })),
+
   setSessionName: (name) => set({ sessionName: name }),
   setMarket: (market) => set({ market }),
   setCdpPort: (port) => set({ cdpPort: port }),
@@ -299,5 +332,6 @@ export const usePipelineStore = create<PipelineState>()((set) => ({
       },
       captcha: { isWaiting: false, timestamps: [], currentDelay: 10, skippedAsins: [] },
       progress: { phase: null, phaseStep: 'execute', percent: 0, message: '' },
+      dedup: { availableSessions: [], selectedSessions: [] },
     }),
 }));

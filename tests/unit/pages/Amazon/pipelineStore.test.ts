@@ -61,6 +61,34 @@ describe('pipelineStore', () => {
     expect(progress.phaseStep).toBe('check');
   });
 
+  it('should initialize with empty dedup sessions', () => {
+    expect(usePipelineStore.getState().dedup.availableSessions).toEqual([]);
+    expect(usePipelineStore.getState().dedup.selectedSessions).toEqual([]);
+  });
+
+  it('should set available sessions and auto-select all', () => {
+    const sessions = [
+      { name: '20260426-1', productCount: 44, date: '2026-04-26', path: '/path' },
+      { name: '20260404', productCount: 38, date: '2026-04-04', path: '/path2' },
+    ];
+    usePipelineStore.getState().setAvailableSessions(sessions);
+    const state = usePipelineStore.getState();
+    expect(state.dedup.availableSessions).toHaveLength(2);
+    expect(state.dedup.selectedSessions).toEqual(['20260426-1', '20260404']);
+  });
+
+  it('should toggle session selection', () => {
+    const sessions = [
+      { name: '20260426-1', productCount: 44, date: '2026-04-26', path: '/p1' },
+      { name: '20260404', productCount: 38, date: '2026-04-04', path: '/p2' },
+    ];
+    usePipelineStore.getState().setAvailableSessions(sessions);
+    usePipelineStore.getState().toggleDedupSession('20260404');
+    expect(usePipelineStore.getState().dedup.selectedSessions).toEqual(['20260426-1']);
+    usePipelineStore.getState().toggleDedupSession('20260404');
+    expect(usePipelineStore.getState().dedup.selectedSessions).toEqual(['20260426-1', '20260404']);
+  });
+
   it('should reset quality checks on full reset', () => {
     usePipelineStore.getState().setQualityCheckResult('seller_verification', {
       phase: 'seller_verification', timestamp: '', pass: true,

@@ -14,6 +14,8 @@ import { QualityCheckPanel } from './components/QualityCheckPanel';
 import { QualityCheckBadge } from './components/QualityCheckBadge';
 import { CaptchaModal } from './components/CaptchaModal';
 import { ProgressMultiLevel } from './components/ProgressMultiLevel';
+import { SessionSelector } from './components/SessionSelector';
+import { ProfitSimulator } from './components/ProfitSimulator';
 import type { PipelinePhase } from './types/pipeline';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -373,6 +375,9 @@ export function PipelineWizard() {
           </div>
         </div>
 
+        {/* Session Dedup */}
+        <SessionSelector />
+
         {/* Execution Mode */}
         <ExecutionModeSelector />
 
@@ -644,6 +649,14 @@ export function PipelineWizard() {
               <Button variant="outline" size="sm" className="mt-3 rounded-xl" onClick={loadResults}>
                 <RotateCcw className="h-3.5 w-3.5 mr-1.5" />刷新
               </Button>
+            </div>
+          )}
+
+          {/* Profit Simulator */}
+          {Object.values(store.stats).some((s: any) => s.count > 0) && (
+            <div className="p-6 rounded-3xl border bg-card space-y-4">
+              <h3 className="text-sm font-bold flex items-center gap-2">利润模拟 (示例)</h3>
+              <ProfitSimulator sellingPrice={59.99} monthlyUnits={450} />
             </div>
           )}
 
