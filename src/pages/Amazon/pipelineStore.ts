@@ -1,4 +1,8 @@
 import { create } from 'zustand';
+import type {
+  ExecutionMode, PipelinePhase, QualityCheckResult,
+  QualityCheckState, CaptchaState, MultiLevelProgress,
+} from './types/pipeline';
 
 export interface PhaseConfig {
   id: string;
@@ -31,6 +35,24 @@ export interface PipelineState {
   // Results (Step 4)
   stats: Record<string, { count: number; label: string }>;
   reportContent: string | null;
+
+  // Execution mode
+  executionMode: ExecutionMode;
+  setExecutionMode: (mode: ExecutionMode) => void;
+
+  // Quality checks
+  qualityChecks: Record<PipelinePhase, QualityCheckState>;
+  setQualityCheckResult: (phase: PipelinePhase, result: QualityCheckResult) => void;
+  setQualityCheckStatus: (phase: PipelinePhase, status: QualityCheckState['status']) => void;
+
+  // CAPTCHA
+  captcha: CaptchaState;
+  triggerCaptcha: () => void;
+  resolveCaptcha: () => void;
+
+  // Multi-level progress
+  progress: MultiLevelProgress;
+  updatePhaseProgress: (p: MultiLevelProgress) => void;
 
   // Actions
   setSessionName: (name: string) => void;
@@ -102,6 +124,21 @@ export const usePipelineStore = create<PipelineState>()((set) => ({
   stats: {},
   reportContent: null,
 
+  executionMode: 'step',
+
+  qualityChecks: {
+    category_sampling: { status: 'pending', retryCount: 0 },
+    seller_verification: { status: 'pending', retryCount: 0 },
+    store_check: { status: 'pending', retryCount: 0 },
+    product_detail: { status: 'pending', retryCount: 0 },
+    keyword_research: { status: 'pending', retryCount: 0 },
+    report_generation: { status: 'pending', retryCount: 0 },
+  },
+
+  captcha: { isWaiting: false, timestamps: [], currentDelay: 10, skippedAsins: [] },
+
+  progress: { phase: null, phaseStep: 'execute', percent: 0, message: '' },
+
   setSessionName: (name) => set({ sessionName: name }),
   setMarket: (market) => set({ market }),
   setCdpPort: (port) => set({ cdpPort: port }),
@@ -147,6 +184,41 @@ export const usePipelineStore = create<PipelineState>()((set) => ({
   setStats: (stats) => set({ stats }),
   setReportContent: (content) => set({ reportContent: content }),
 
+  setExecutionMode: (mode) => set({ executionMode: mode }),
+
+  setQualityCheckResult: (phase, result) =>
+    set((s) => ({
+      qualityChecks: {
+        ...s.qualityChecks,
+        [phase]: {
+          status: result.pass ? 'passed' : 'failed',
+          result,
+          retryCount: s.qualityChecks[phase].retryCount,
+        },
+      },
+    })),
+
+  setQualityCheckStatus: (phase, status) =>
+    set((s) => ({
+      qualityChecks: {
+        ...s.qualityChecks,
+        [phase]: { ...s.qualityChecks[phase], status },
+      },
+    })),
+
+  triggerCaptcha: () =>
+    set((s) => {
+      const timestamps = [...s.captcha.timestamps, Date.now()];
+      const recent = timestamps.filter((t) => Date.now() - t < 300_000);
+      const delay = recent.length <= 1 ? 10 : recent.length <= 3 ? 30 : 60;
+      return { captcha: { ...s.captcha, isWaiting: true, timestamps, currentDelay: delay } };
+    }),
+
+  resolveCaptcha: () =>
+    set((s) => ({ captcha: { ...s.captcha, isWaiting: false } })),
+
+  updatePhaseProgress: (p) => set({ progress: p }),
+
   reset: () =>
     set({
       sessionName: generateSessionName(),
@@ -160,5 +232,16 @@ export const usePipelineStore = create<PipelineState>()((set) => ({
       intervention: null,
       stats: {},
       reportContent: null,
+      executionMode: 'step',
+      qualityChecks: {
+        category_sampling: { status: 'pending', retryCount: 0 },
+        seller_verification: { status: 'pending', retryCount: 0 },
+        store_check: { status: 'pending', retryCount: 0 },
+        product_detail: { status: 'pending', retryCount: 0 },
+        keyword_research: { status: 'pending', retryCount: 0 },
+        report_generation: { status: 'pending', retryCount: 0 },
+      },
+      captcha: { isWaiting: false, timestamps: [], currentDelay: 10, skippedAsins: [] },
+      progress: { phase: null, phaseStep: 'execute', percent: 0, message: '' },
     }),
 }));
