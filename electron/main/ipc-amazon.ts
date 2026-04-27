@@ -26,6 +26,9 @@ import {
 } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join, basename } from 'node:path';
+import { promisify } from 'util';
+import { exec } from 'child_process';
+const execAsync = promisify(exec);
 import { GatewayManager } from '../gateway/manager';
 import { readOpenClawConfig, writeOpenClawConfig } from '../utils/channel-config';
 import { getOpenClawSkillsDir } from '../utils/paths';
@@ -477,9 +480,17 @@ export function registerAmazonHandlers(gatewayManager: GatewayManager, mainWindo
       const onIntervention = (data: any) => {
         event.sender.send('amazon:workflowIntervention', { workflowId: workflow.id, ...data });
       };
+      const onQcResult = (result: any) => {
+        mainWindow?.webContents.send('amazon:qualityCheckResult', result);
+      };
+      const onPhaseSignal = (signal: { phase: string; step: string }) => {
+        mainWindow?.webContents.send('amazon:phaseProgress', signal);
+      };
 
       runner?.on('progress', onProgress);
       runner?.on('intervention', onIntervention);
+      runner?.on('qc-result', onQcResult);
+      runner?.on('phase-signal', onPhaseSignal);
 
       try {
       // ── Process Expanded Filters ──────────────────────────────────────────
@@ -529,6 +540,8 @@ export function registerAmazonHandlers(gatewayManager: GatewayManager, mainWindo
       } finally {
         runner?.off('progress', onProgress);
         runner?.off('intervention', onIntervention);
+        runner?.off('qc-result', onQcResult);
+        runner?.off('phase-signal', onPhaseSignal);
       }
     } catch (err) {
       return { success: false, error: String(err) };
@@ -649,6 +662,91 @@ export function registerAmazonHandlers(gatewayManager: GatewayManager, mainWindo
     } catch (err) {
       return { success: false, error: String(err) };
     }
+  });
+
+  // --- Quality Check ---
+  ipcMain.handle('amazon:runQualityCheck', async (_event, { sessionName, phase }: {
+    sessionName: string; phase: string;
+  }) => {
+    const AMAZON_ROOT = 'd:\\Code\\amazon';
+    const phaseScripts: Record<string, { script: string; extraArgs: string[] }> = {
+      category_sampling: {
+        script: '.agent/skills/sellersprite-search-products/scripts/check_product_base.py',
+        extraArgs: ['--check'],
+      },
+      seller_verification: {
+        script: '.agent/skills/amazon-check-seller/scripts/check_product_small_seller.py',
+        extraArgs: ['--check'],
+      },
+      store_check: {
+        script: '.agent/skills/amazon-list-storefront/scripts/check_store_list.py',
+        extraArgs: ['--check'],
+      },
+      product_detail: {
+        script: '.agent/skills/amazon-get-product/scripts/check_product_potential.py',
+        extraArgs: ['--check'],
+      },
+      keyword_research: {
+        script: '.agent/skills/amazon-keyword-research/scripts/check_keyword_research.py',
+        extraArgs: ['--check'],
+      },
+    };
+
+    const config = phaseScripts[phase];
+    if (!config) return { error: `Unknown phase: ${phase}` };
+
+    const scriptPath = join(AMAZON_ROOT, config.script);
+    const args = ['run', scriptPath, '--session', sessionName, ...config.extraArgs, '--json'];
+
+    try {
+      const { stdout } = await execAsync(`uv ${args.join(' ')}`, {
+        cwd: AMAZON_ROOT,
+        timeout: 120_000,
+      });
+      return JSON.parse(stdout.trim());
+    } catch (err: any) {
+      if (err.stdout) {
+        try { return JSON.parse(err.stdout.trim()); } catch { /* fall through */ }
+      }
+      return { error: err.message, pass: false };
+    }
+  });
+
+  // --- Session Scanning ---
+  ipcMain.handle('amazon:scanSessions', async () => {
+    const AMAZON_ROOT = 'd:\\Code\\amazon';
+    const sessionsDir = join(AMAZON_ROOT, '.agent/skills/report/sessions');
+    if (!existsSync(sessionsDir)) return [];
+
+    const entries = await readdir(sessionsDir, { withFileTypes: true });
+    const sessions: Array<{ name: string; productCount: number; date: string }> = [];
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const sessionPath = join(sessionsDir, entry.name);
+
+      let productCount = 0;
+      for (const csvName of [
+        'product_keyword.csv', 'product_potential.csv',
+        'product_potential_store.csv', 'product_small_seller.csv', 'product_base.csv',
+      ]) {
+        const csvPath = join(sessionPath, csvName);
+        if (existsSync(csvPath)) {
+          const content = await readFile(csvPath, 'utf-8');
+          productCount = content.split('\n').filter((l) => l.trim()).length - 1;
+          break;
+        }
+      }
+
+      const dirStat = await stat(sessionPath);
+      sessions.push({
+        name: entry.name,
+        productCount,
+        date: dirStat.mtime.toISOString().slice(0, 10),
+      });
+    }
+
+    return sessions.sort((a, b) => b.date.localeCompare(a.date));
   });
 
   // ── Scheduler ────────────────────────────────────────────────────────────
