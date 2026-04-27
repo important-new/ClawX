@@ -1,5 +1,6 @@
 import { spawn, ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
+import { getAmazonSkillsDir } from '../../../utils/paths';
 
 const PHASE_RE = /^PHASE:\s*(\S+)\s+(\S+)/;
 const QC_RESULT_RE = /^QC_RESULT:\s*(.+)/;
@@ -18,7 +19,7 @@ export class ToolExecutor extends EventEmitter {
   async execute(
     toolPath: string,
     args: Record<string, any>,
-    cwd: string = 'd:\\Code\\amazon'
+    cwd: string = getAmazonSkillsDir()
   ): Promise<ExecutionResult> {
     const formattedArgs = this.formatArgs(args);
     return new Promise((resolve) => {
