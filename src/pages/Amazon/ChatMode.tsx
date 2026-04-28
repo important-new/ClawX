@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Send, ChevronDown, Sparkles, Bot, Zap, Package } from 'lucide-react'
+import { Send, ChevronDown, Sparkles, Bot, Zap, Package, Database, Loader2, X } from 'lucide-react'
 import { AmazonBreadcrumbs } from './components/AmazonBreadcrumbs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,13 +12,13 @@ import { ReportView } from './components/ReportView'
 import { MODE_LABELS } from './types'
 import type { SelectionMode, DataInput, AnalysisSession } from './types'
 import { useAmazonStore } from './store'
-import { useAmazonWorkflowStore, Workflow } from './amazonWorkflowStore'
 import { useGatewayStore } from '@/stores/gateway'
 import { useGatewayChat } from './hooks/useGatewayAI'
 import { useInstalledSkills } from './hooks/useInstalledSkills'
 import { useMcpDataFetch } from './hooks/useMcpDataFetch'
 import { useAIEnrichedAnalysis } from './hooks/useAIEnrichedAnalysis'
 import { runAnalysis } from './engine'
+import { usePipelineSession } from './hooks/usePipelineSession'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -103,9 +103,9 @@ function extractKeywords(text: string, productName: string): string[] {
   return [...new Set(kws)].slice(0, 6)
 }
 
-/** Detect if user wants to build a pipeline/workflow */
+/** Detect if user wants to use pipeline/automated workflow */
 function detectWorkflowIntent(text: string): boolean {
-  const keywords = ['流程', '流水线', '串联', '自动运行', 'pipeline', 'workflow', '步骤'];
+  const keywords = ['流程', '流水线', '串联', '自动运行', 'pipeline', 'workflow', '步骤', '批量采集', '自动化', '漏斗', '全链路'];
   return keywords.some(k => text.includes(k));
 }
 
@@ -153,7 +153,9 @@ function buildAgentResponse(
 - 头程物流报价（用于精确盈利核算）
 - 知识产权查询结果（排查侵权风险）
 
-请在左侧数据面板中依次点击**"粘贴"**加载数据。数据加载完成后告诉我，我会立即开始分析。`
+请在左侧数据面板中依次点击**"粘贴"**加载数据。数据加载完成后告诉我，我会立即开始分析。
+
+💡 如需自动化批量采集数据，可前往 **Pipeline 向导** 一键执行完整流水线。`
       }
 
       if (missing.length === 0) {
@@ -174,11 +176,11 @@ ${missing.map((d) => `- **${d.label}**`).join('\n')}
       return `好的！当前已加载 **${loaded}** 项数据。
 
 即将对 **${newState.productName}**（${MODE_LABELS[newState.mode]}）执行五步评估：
-1. 初选筛选
-2. 竞争格局分析
-3. 全链路盈利核算
-4. 合规与风险排查
-5. 报告生成
+1. 初选筛选 — 市场容量与供需比
+2. 竞争格局分析 — CR10、头部护城河、新品空间
+3. 全链路盈利核算 — FBA/FBM 费用、毛利率、ROI
+4. 合规与风险排查 — 专利、认证、平台政策
+5. 试销方案建议 — 备货量、推广节奏、止损线
 
 回复**"开始"**或**"确认"**启动分析。`
     }
@@ -258,37 +260,52 @@ function transition(state: AgentState, userText: string): AgentState {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-const AI_SYSTEM_PROMPT = `你是一位专业的亚马逊跨境电商选品顾问，专注于帮助卖家评估产品的市场可行性。你熟悉以下四种运营模式及其差异：
-- FBA 精铺：高利润、品牌壁垒、严格质量标准，适合长期运营
-- FBA 铺货：快速测款、广撒网、低试错成本，追求规模效益
-- FBM 精铺：高客单价、定制化细分市场，无需 FBA 仓储费
-- FBM 铺货：零库存、差价套利、低门槛入场
+const AI_SYSTEM_PROMPT = `你是 ClawX 选品助手内置的亚马逊跨境电商选品顾问 AI。你运行在 ClawX 桌面端，拥有以下能力：
 
-你的评估框架分五步：
-1. **初选筛选** — 搜索量、供需比、市场容量是否达标
-2. **竞争格局分析** — CR10 评论分布、头部竞品护城河、新品切入空间
-3. **全链路盈利核算** — FBA/FBM 费用、毛利率、ROI、资金回转周期
-4. **合规与风险排查** — 专利侵权、产品认证要求、平台政策限制
-5. **试销方案建议** — 首批备货量、推广节奏、亏损止损线
+## 你所在的系统
+ClawX 选品助手提供一条完整的自动化选品流水线（Pipeline 向导），包含 6 个阶段：
+1. **搜索采样** — 在 SellerSprite 上按筛选条件批量采集品类数据（月销量、价格、评分、BSR 等）
+2. **卖家验证** — 自动打开每个 ASIN 的卖家页，验证卖家数量、地区、FBA/FBM 比例
+3. **店铺分析** — 检查卖家店铺规模、Listing 数量、高销量占比，识别铺货型 vs 精品型店铺
+4. **产品详情** — 抓取产品页的评论数、评分、上架时间、变体数量等详细信息
+5. **关键词分析** — 查询核心关键词的月搜索量、PPC 竞价、竞品评论数等数据
+6. **报告生成** — 汇总漏斗统计、利润核算，生成 Markdown 分析报告
 
-回答要求：
+## 筛选参数参考
+Pipeline 支持丰富的筛选条件，用户可能会问到：
+- 销售指标：月销量（默认 ≥300）、月销售额、BSR 及增长率
+- 价格区间：默认 $50–$100
+- 评论指标：评论数、月均新增评论、评分（默认 4.5–5）
+- 竞品指标：卖家数量（默认 ≤1）、卖家地区（默认中国）、FBA/FBM 筛选
+- 利润指标：FBA 费用、毛利率、PPC 竞价上限（默认 ≤$3.0）
+- 产品属性：变体数、包裹重量/尺寸、上架时间（默认近半年）
+
+## 四种运营模式
+- **FBA 精铺**：高利润、品牌壁垒、严格质量标准，适合长期运营
+- **FBA 铺货**：快速测款、广撒网、低试错成本，追求规模效益
+- **FBM 精铺**：高客单价、定制化细分市场，无需 FBA 仓储费
+- **FBM 铺货**：零库存、差价套利、低门槛入场
+
+## 回答准则
 - 使用中文，保持专业且易懂的语气
-- 数据充足时给出量化建议（如"毛利率低于 35% 建议放弃"）
-- 数据不足时主动引导用户补充关键信息
-- 避免模糊表述，尽量给出可操作的具体建议`
+- 数据充足时给出量化建议（如"毛利率低于 35% 建议放弃"、"PPC ≤ $2.5 才有利润空间"）
+- 数据不足时主动引导用户补充关键信息，或建议用户前往 Pipeline 向导执行自动化采集
+- 当用户问到具体品类时，帮助推荐合适的筛选参数组合
+- 避免模糊表述，尽量给出可操作的具体建议
+- 如果用户的需求更适合跑完整流水线，主动建议"前往 Pipeline 向导"一键执行`
 
-const WELCOME = `你好！我是亚马逊选品助手。
+const WELCOME = `你好！我是 ClawX 选品助手。
 
-请告诉我你想评估的产品或品类，例如：
-- "帮我分析便携式挂烫机的 FBA 精铺可行性"
-- "我想做折叠收纳盒铺货，评估一下竞争情况"
+你可以直接告诉我你想评估的产品或品类，例如：
+- "帮我分析便携挂烫机在美国站的 FBA 精铺可行性"
+- "月销 300+、价格 $50–100 的品类有哪些推荐？"
+- "帮我设置关键词分析的筛选参数"
 
-我会通过五步评估模型逐步引导你完成分析。`
+我会引导你完成评估。如果需要批量自动化采集，可以随时前往 **Pipeline 向导**。`
 
 export function ChatMode() {
   const navigate = useNavigate()
   const { addSession, addTracked, trackedProducts } = useAmazonStore()
-  const { addWorkflow } = useAmazonWorkflowStore()
   const gatewayRunning = useGatewayStore((s) => s.status.state === 'running')
 
   // ── Local state machine mode ──────────────────────────────────────────────
@@ -319,6 +336,37 @@ export function ChatMode() {
   const [aiReportName, setAiReportName] = useState('')
   const [aiReportMode, setAiReportMode] = useState<SelectionMode>('fba-bulk')
   const [aiReportSession, setAiReportSession] = useState<AnalysisSession | null>(null)
+
+  // ── Pipeline session loader ────────────────────────────────────────────────
+  const pipelineSession = usePipelineSession()
+  const [showSessionPicker, setShowSessionPicker] = useState(false)
+
+  useEffect(() => {
+    if (showSessionPicker && pipelineSession.sessions.length === 0) pipelineSession.scan()
+  }, [showSessionPicker]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleLoadSession = useCallback(async (sessionName: string) => {
+    setShowSessionPicker(false)
+    await pipelineSession.load(sessionName)
+    toast.success(`已加载 Pipeline 会话「${sessionName}」`)
+
+    // Context injection is handled by the useEffect watching pipelineSession.loaded
+  }, [aiMode, pipelineSession])
+
+  // When session finishes loading, inject context into AI chat
+  useEffect(() => {
+    if (!pipelineSession.loaded || !aiMode) return
+    const { name, stats, report } = pipelineSession.loaded
+    const statsLines = Object.entries(stats)
+      .map(([, v]) => `- ${v.label}: ${v.count} 条`)
+      .join('\n')
+    const contextMsg = [
+      `[已加载 Pipeline 会话: ${name}]`,
+      statsLines ? `\n漏斗统计:\n${statsLines}` : '',
+      report ? `\n\n报告摘要 (前2000字):\n${report.slice(0, 2000)}` : '\n(无报告文件)',
+    ].join('')
+    gatewayChat.send(`请基于以下 Pipeline 数据进行分析和解答：\n\n${contextMsg}`)
+  }, [pipelineSession.loaded]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, gatewayChat.messages])
 
@@ -452,10 +500,9 @@ export function ChatMode() {
     toast.success(`"${aiReportName}" 报告已生成`)
   }
 
-  const handleSaveWorkflow = (wf: Workflow) => {
-    addWorkflow(wf)
-    toast.success('工作流已保存到流水线编排')
-    navigate('/amazon/pipeline')
+  const handleGoToPipeline = () => {
+    toast.success('前往 Pipeline 向导')
+    navigate('/amazon/pipeline-wizard')
   }
 
   const handleSend = async () => {
@@ -529,6 +576,66 @@ export function ChatMode() {
         </div>
 
         <div className="ml-auto flex items-center gap-2">
+          {/* Pipeline session loader */}
+          {aiMode && (
+            <div className="relative">
+              <button
+                onClick={() => { setShowSessionPicker(!showSessionPicker); setShowSkillPicker(false) }}
+                className={cn(
+                  'flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border transition-colors',
+                  pipelineSession.loaded
+                    ? 'bg-green-50 dark:bg-green-950/30 border-green-300 dark:border-green-700 text-green-700 dark:text-green-300'
+                    : showSessionPicker
+                    ? 'bg-teal-50 dark:bg-teal-950/30 border-teal-300 dark:border-teal-700 text-teal-700 dark:text-teal-300'
+                    : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                )}
+                title="加载 Pipeline 会话数据"
+              >
+                {pipelineSession.loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Database className="h-3 w-3" />}
+                {pipelineSession.loaded ? pipelineSession.loaded.name : 'Pipeline 数据'}
+                {pipelineSession.loaded && (
+                  <span
+                    className="ml-0.5 hover:text-red-500"
+                    onClick={(e) => { e.stopPropagation(); pipelineSession.clear(); toast('已卸载 Pipeline 数据') }}
+                  >
+                    <X className="h-3 w-3" />
+                  </span>
+                )}
+              </button>
+              {showSessionPicker && (
+                <div className="absolute right-0 top-full mt-1 z-50 w-64 rounded-xl border bg-popover shadow-lg py-1">
+                  <div className="flex items-center justify-between px-3 py-1.5 border-b">
+                    <p className="text-[10px] text-muted-foreground">选择 Pipeline 会话加载数据</p>
+                    <button
+                      onClick={() => pipelineSession.scan()}
+                      className="text-[10px] text-muted-foreground hover:text-foreground"
+                    >
+                      {pipelineSession.scanning ? '扫描中...' : '刷新'}
+                    </button>
+                  </div>
+                  {pipelineSession.sessions.length === 0 ? (
+                    <p className="px-3 py-3 text-xs text-muted-foreground text-center">
+                      {pipelineSession.scanning ? '扫描中...' : '暂无 Pipeline 会话'}
+                    </p>
+                  ) : (
+                    pipelineSession.sessions.map((s) => (
+                      <button
+                        key={s.name}
+                        onClick={() => handleLoadSession(s.name)}
+                        className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-muted transition-colors"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium truncate">{s.name}</p>
+                          <p className="text-[10px] text-muted-foreground">{s.date} · {s.productCount} 条产品</p>
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Skill picker — only shown in AI mode with skills available */}
           {aiMode && skills.length > 0 && (
             <div className="relative">
@@ -625,7 +732,7 @@ export function ChatMode() {
                         <Sparkles className="h-3.5 w-3.5" />
                         <span className="text-xs font-medium">AI 模式已启用</span>
                       </div>
-                      你好！我是 ClawX AI 助手。请告诉我你想评估的亚马逊产品，我会帮你分析市场可行性。{'\n\n'}完成对话后，点击"生成报告"可生成结构化的五步评估报告。
+                      你好！我是 ClawX 选品 AI 助手，可以帮你分析产品可行性、推荐筛选参数、解读 Pipeline 数据。{'\n\n'}点击上方 **Pipeline 数据** 按钮可加载已爬取的会话，我会基于真实数据为你分析。也可以直接描述需求开始对话。
                     </div>
                   </div>
                 )}
@@ -654,35 +761,15 @@ export function ChatMode() {
                     <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-2xl p-4 w-full max-w-[80%]">
                       <div className="flex items-center gap-2 mb-2 text-orange-700 dark:text-orange-300">
                         <Zap className="h-4 w-4" />
-                        <span className="text-xs font-semibold">检测到流程编排意图</span>
+                        <span className="text-xs font-semibold">检测到自动化需求</span>
                       </div>
-                      <p className="text-xs mb-3">您可以将当前对话中讨论的步骤保存为自动化流水线。</p>
-                      <Button 
-                        size="sm" variant="outline" 
+                      <p className="text-xs mb-3">Pipeline 向导支持 6 阶段全自动选品流水线：搜索采样 → 卖家验证 → 店铺分析 → 产品详情 → 关键词分析 → 报告生成。</p>
+                      <Button
+                        size="sm" variant="outline"
                         className="h-8 border-orange-300 dark:border-orange-700 text-orange-700 dark:text-orange-300 hover:bg-orange-100"
-                        onClick={() => {
-                          const lastMsg = gatewayChat.messages[gatewayChat.messages.length-1].content;
-                          // Mapping chat steps to actual tool IDs and default args
-                          const steps: any[] = [];
-                          if (lastMsg.includes('初选') || lastMsg.includes('Stage 1')) {
-                            steps.push({ toolId: 'select_product_base', args: { session: '' } });
-                          }
-                          if (lastMsg.includes('详情') || lastMsg.includes('PPC')) {
-                            steps.push({ toolId: 'select_detail', args: { session: '' } });
-                          }
-                          if (lastMsg.includes('关键词')) {
-                            steps.push({ toolId: 'select_keyword_research', args: { session: '', 'max-min-ppc': 3.0 } });
-                          }
-                          
-                          handleSaveWorkflow({
-                            id: `ai-wf-${Date.now()}`,
-                            name: 'AI 生成任务',
-                            steps: steps.length > 0 ? steps : [{ toolId: 'select_product_base', args: {} }],
-                            status: 'idle'
-                          });
-                        }}
+                        onClick={handleGoToPipeline}
                       >
-                        保存为自动化流水线
+                        前往 Pipeline 向导
                       </Button>
                     </div>
                   </div>

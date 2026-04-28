@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { MessageSquare, FileText, BarChart2, Package, Clock, TrendingUp, Settings2, Rocket, Filter } from 'lucide-react'
+import { MessageSquare, FileText, BarChart2, Package, Clock, TrendingUp, Settings2, Filter } from 'lucide-react'
 import { ModeCard } from './components/ModeCard'
 import { VerdictBadge, ScoreBadge } from './components/VerdictBadge'
 import { MODE_LABELS } from './types'
@@ -79,45 +79,20 @@ export function Amazon() {
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">选择工作模式</h2>
         <div className="grid grid-cols-3 gap-3">
           <ModeCard
-            icon={<Rocket className="h-5 w-5" />}
-            title="选品向导"
-            description="最受推荐的方式：跟随引导式向导，逐步完成市场调研、竞品深度分析及核算"
-            tags={['最受推荐', '全自动化', '零门槛']}
-            onClick={() => navigate('/amazon/wizard')}
+            icon={<Filter className="h-5 w-5" />}
+            title="Pipeline 向导"
+            description="全参数可调的选品漏斗：配置筛选阈值、执行监控、验证码恢复、查看报告"
+            tags={['最受推荐', '全流程', '漏斗统计']}
+            onClick={() => navigate('/amazon/pipeline-wizard')}
             accent="bg-primary/10 text-primary"
           />
           <ModeCard
             icon={<MessageSquare className="h-5 w-5" />}
             title="对话模式"
-            description="用自然语言描述需求，Agent 逐步引导提问并输出分析报告"
-            tags={['灵活', '引导式', '适合新手']}
+            description="加载 Pipeline 数据与 AI 交互分析，或通过引导式对话完成选品评估"
+            tags={['数据解读', '灵活', '引导式']}
             onClick={() => navigate('/amazon/chat')}
             accent="bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
-          />
-
-          <ModeCard
-            icon={<FileText className="h-5 w-5" />}
-            title="表单模式"
-            description="填写结构化参数，支持批量数据录入，快速生成标准化报告"
-            tags={['结构化', '批量处理', '高效']}
-            onClick={() => navigate('/amazon/form')}
-            accent="bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300"
-          />
-          <ModeCard
-            icon={<TrendingUp className="h-5 w-5" />}
-            title="流水线编排"
-            description="自定义工作流，编排抓取与过滤各个阶段，支持定时自动运行全链路分析"
-            tags={['全自动', '定时任务', '灵活编排']}
-            onClick={() => navigate('/amazon/pipeline')}
-            accent="bg-orange-100 text-orange-700 dark:bg-orange-950/20 dark:text-orange-300"
-          />
-          <ModeCard
-            icon={<Filter className="h-5 w-5" />}
-            title="Pipeline 向导"
-            description="全参数可调的选品漏斗：配置筛选阈值、执行监控、验证码恢复、查看报告"
-            tags={['全流程', '漏斗统计', '验证码恢复']}
-            onClick={() => navigate('/amazon/pipeline-wizard')}
-            accent="bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300"
           />
           <ModeCard
             icon={<BarChart2 className="h-5 w-5" />}

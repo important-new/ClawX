@@ -19,12 +19,9 @@ import { Settings } from './pages/Settings';
 import { Setup } from './pages/Setup';
 import { Amazon } from './pages/Amazon';
 import { ChatMode } from './pages/Amazon/ChatMode';
-import { FormMode } from './pages/Amazon/FormMode';
 import { Tracker } from './pages/Amazon/Tracker';
 import { History } from './pages/Amazon/History';
-import { AmazonPipeline } from './pages/Amazon/AmazonPipeline';
 import { AmazonSettings } from './pages/Amazon/AmazonSettings';
-import { AmazonWizard } from './pages/Amazon/AmazonWizard';
 import { PipelineWizard } from './pages/Amazon/PipelineWizard';
 import { useSettingsStore } from './stores/settings';
 import { useGatewayStore } from './stores/gateway';
@@ -204,12 +201,9 @@ function App() {
             <Route path="/settings/*" element={<Settings />} />
             <Route path="/amazon" element={<Amazon />} />
             <Route path="/amazon/chat" element={<ChatMode />} />
-            <Route path="/amazon/form" element={<FormMode />} />
             <Route path="/amazon/tracker" element={<Tracker />} />
             <Route path="/amazon/history" element={<History />} />
-            <Route path="/amazon/pipeline" element={<AmazonPipeline />} />
             <Route path="/amazon/settings" element={<AmazonSettings />} />
-            <Route path="/amazon/wizard" element={<AmazonWizard />} />
             <Route path="/amazon/pipeline-wizard" element={<PipelineWizard />} />
             {extraRoutes.map((r) => (
               <Route key={r.path} path={r.path} element={<r.component />} />

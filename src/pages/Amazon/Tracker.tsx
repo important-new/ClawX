@@ -135,7 +135,7 @@ export function Tracker() {
             </p>
           </div>
         </div>
-        <Button className="gap-2 rounded-xl" size="sm" onClick={() => navigate('/amazon/form')}>
+        <Button className="gap-2 rounded-xl" size="sm" onClick={() => navigate('/amazon/chat')}>
           <Plus className="h-4 w-4" /> 添加产品分析
         </Button>
       </div>
@@ -190,7 +190,7 @@ export function Tracker() {
           <BarChart2 className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
           <p className="text-sm font-medium text-muted-foreground">暂无{filter !== 'all' ? (filter === 'active' ? '跟踪中' : '已暂停') : ''}产品</p>
           <p className="text-xs text-muted-foreground mt-1 mb-4">完成选品分析后，可将产品添加到跟踪看板</p>
-          <Button size="sm" variant="outline" onClick={() => navigate('/amazon/form')}>去做分析</Button>
+          <Button size="sm" variant="outline" onClick={() => navigate('/amazon/chat')}>去做分析</Button>
         </div>
       )}
     </div>
