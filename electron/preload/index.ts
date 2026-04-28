@@ -158,6 +158,12 @@ const electronAPI = {
         'amazon:listWorkflows',
         'amazon:saveWorkflow',
         'amazon:removeWorkflow',
+        'amazon:resumeWorkflow',
+        'amazon:readSessionFile',
+        'amazon:getSessionStats',
+        'amazon:runQualityCheck',
+        'amazon:runProfitCalculator',
+        'amazon:scanSessions',
       ];
 
       if (validChannels.includes(channel)) {
@@ -205,6 +211,8 @@ const electronAPI = {
         'amazon:toolOutput',
         'amazon:workflowProgress',
         'amazon:workflowIntervention',
+        'amazon:qualityCheckResult',
+        'amazon:phaseProgress',
       ];
 
       if (validChannels.includes(channel) || channel.startsWith('ext:')) {
@@ -258,6 +266,8 @@ const electronAPI = {
         'amazon:toolOutput',
         'amazon:workflowProgress',
         'amazon:workflowIntervention',
+        'amazon:qualityCheckResult',
+        'amazon:phaseProgress',
       ];
 
       if (validChannels.includes(channel) || channel.startsWith('ext:')) {

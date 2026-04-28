@@ -362,6 +362,7 @@ export function PipelineWizard() {
                 value={store.sessionName}
                 onChange={(e) => store.setSessionName(e.target.value)}
                 className="h-10 rounded-xl bg-background"
+                data-testid="pipeline-session-name"
               />
             </div>
             <div className="space-y-1.5">
@@ -371,6 +372,7 @@ export function PipelineWizard() {
                 value={store.cdpPort}
                 onChange={(e) => store.setCdpPort(parseInt(e.target.value, 10) || 9222)}
                 className="h-10 rounded-xl bg-background"
+                data-testid="pipeline-cdp-port"
               />
             </div>
           </div>
@@ -513,10 +515,10 @@ export function PipelineWizard() {
           {/* Progress bar */}
           <div className="space-y-2">
             <div className="flex items-center justify-between text-xs font-medium">
-              <span className="text-primary">
+              <span className="text-primary" data-testid="pipeline-status">
                 {store.isExecuting ? '执行中...' : store.isPaused ? '已暂停' : '已完成'}
               </span>
-              <span className="tabular-nums">{store.overallProgress}%</span>
+              <span className="tabular-nums" data-testid="pipeline-progress">{store.overallProgress}%</span>
             </div>
             <div className="h-3 w-full rounded-full bg-muted overflow-hidden">
               <div
@@ -579,13 +581,13 @@ export function PipelineWizard() {
 
           {/* Controls */}
           {store.isExecuting && (
-            <Button variant="ghost" className="w-full text-muted-foreground hover:text-destructive" onClick={handleStop}>
+            <Button variant="ghost" className="w-full text-muted-foreground hover:text-destructive" onClick={handleStop} data-testid="pipeline-stop-button">
               <Square className="h-4 w-4 mr-2" />终止本次任务
             </Button>
           )}
 
           {!store.isExecuting && !executionError && (
-            <Button className="w-full h-12 rounded-2xl font-bold" onClick={goNext}>
+            <Button className="w-full h-12 rounded-2xl font-bold" onClick={goNext} data-testid="pipeline-view-results">
               查看结果
               <ChevronRight className="h-4 w-4 ml-2" />
             </Button>
@@ -681,7 +683,7 @@ export function PipelineWizard() {
   // ── Main Render ────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col h-full max-w-6xl mx-auto w-full relative">
+    <div className="flex flex-col h-full max-w-6xl mx-auto w-full relative" data-testid="pipeline-wizard">
       <AmazonBreadcrumbs currentMode="Pipeline 向导" items={breadcrumbItems} />
 
       <CaptchaModal onResume={handleResume} onStop={handleStop} />
@@ -720,7 +722,7 @@ export function PipelineWizard() {
                         <ChevronLeft className="h-4 w-4 mr-1" />上一步
                       </Button>
                     )}
-                    <Button className="rounded-xl px-8 h-11 font-bold group shadow-lg shadow-primary/20" onClick={goNext}>
+                    <Button className="rounded-xl px-8 h-11 font-bold group shadow-lg shadow-primary/20" onClick={goNext} data-testid="pipeline-next-button">
                       {store.currentStep === 'filters' ? (
                         <>
                           <Play className="h-4 w-4 mr-2" />开始执行
