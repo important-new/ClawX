@@ -183,28 +183,39 @@ export function PipelineWizard() {
     const enabledPhases = store.phases.filter(p => p.enabled);
     const sortedTools = [...tools].sort((a, b) => (Number(a.stage) || 0) - (Number(b.stage) || 0));
 
-    // Map phases to tools by stage number
-    const steps = enabledPhases.map(phase => {
-      const phaseTool = sortedTools.find(t => Number(t.stage) === phase.phase);
-      if (!phaseTool) return null;
+    // Map phases to tools by stage number.
+    // Stage 6 (report generation) actually contains multiple post-processing
+    // tools (gen_selection_report → insert_profit → insert_analysis →
+    // pipeline_stats → export_report). We expand a single phase to a chain
+    // of steps, ordered by .ui.json `name` (e.g. "Stage 6.1 / 6.2 / 6.3").
+    const steps = enabledPhases.flatMap(phase => {
+      const phaseTools = sortedTools.filter(t => Number(t.stage) === phase.phase);
+      if (phaseTools.length === 0) return [];
+      const ordered = [...phaseTools].sort((a, b) => a.name.localeCompare(b.name));
 
-      // Build args: global params + filter params for this phase
-      const args: Record<string, any> = {
-        session: store.sessionName,
-        market: store.market,
-        'cdp-port': store.cdpPort,
-      };
-
-      // Attach all filters as filter: prefixed args (workflow executor will synthesize them)
-      for (const [key, val] of Object.entries(store.filters)) {
-        args[`filter:${key}`] = val;
-      }
-
-      return {
-        toolId: phaseTool.id,
-        args,
-      };
-    }).filter(Boolean) as { toolId: string; args: Record<string, any> }[];
+      return ordered.map(phaseTool => {
+        // Only forward args that the tool declares in its .ui.json — keeps
+        // post-processing scripts (which only take --session) from receiving
+        // unsupported flags like --market / --cdp-port / --filters-file.
+        const declared = new Set((phaseTool.arguments || []).map((a: any) => a.name));
+        const args: Record<string, any> = {};
+        if (declared.has('session')) args.session = store.sessionName;
+        if (declared.has('market')) args.market = store.market;
+        if (declared.has('cdp-port')) args['cdp-port'] = store.cdpPort;
+        if (declared.has('filters-file')) {
+          for (const [key, val] of Object.entries(store.filters)) {
+            args[`filter:${key}`] = val;
+          }
+        }
+        // Apply .ui.json declared defaults (e.g. force=true, format="both")
+        for (const arg of (phaseTool.arguments || []) as any[]) {
+          if (arg?.default !== undefined && !(arg.name in args)) {
+            args[arg.name] = arg.default;
+          }
+        }
+        return { toolId: phaseTool.id, args };
+      });
+    }) as { toolId: string; args: Record<string, any> }[];
 
     if (steps.length === 0) {
       toast.error('没有可执行的步骤 — 请检查工具是否已安装');
