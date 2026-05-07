@@ -695,7 +695,11 @@ export function PipelineWizard() {
 
   return (
     <div className="flex flex-col h-full max-w-6xl mx-auto w-full relative" data-testid="pipeline-wizard">
-      <AmazonBreadcrumbs currentMode="Pipeline 向导" items={breadcrumbItems} />
+      <AmazonBreadcrumbs
+        currentMode="Pipeline 向导"
+        currentModeOnClick={() => store.setCurrentStep('config')}
+        items={breadcrumbItems}
+      />
 
       <CaptchaModal onResume={handleResume} onStop={handleStop} />
 

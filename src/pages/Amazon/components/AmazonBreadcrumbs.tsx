@@ -2,18 +2,35 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronRight, Package } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+interface BreadcrumbItem {
+  label: string;
+  to?: string;
+  onClick?: () => void;
+}
+
 interface AmazonBreadcrumbsProps {
   currentMode?: string;
-  items?: { label: string; to?: string }[];
+  /** Optional click handler for the currentMode label (e.g. reset wizard step). */
+  currentModeOnClick?: () => void;
+  items?: BreadcrumbItem[];
   className?: string;
 }
 
-export function AmazonBreadcrumbs({ currentMode, items, className }: AmazonBreadcrumbsProps) {
+export function AmazonBreadcrumbs({
+  currentMode,
+  currentModeOnClick,
+  items,
+  className,
+}: AmazonBreadcrumbsProps) {
   const navigate = useNavigate();
+  // The currentMode is the active label only when it's the deepest crumb
+  // (i.e. no further items). When items follow it, it should look like a
+  // nav target — bold + clickable if a handler is provided.
+  const isDeepest = !items || items.length === 0;
 
   return (
     <nav className={cn("flex items-center gap-2 text-sm text-muted-foreground mb-6", className)}>
-      <button 
+      <button
         onClick={() => navigate('/amazon')}
         className="flex items-center gap-1.5 hover:text-foreground transition-colors group"
       >
@@ -24,16 +41,25 @@ export function AmazonBreadcrumbs({ currentMode, items, className }: AmazonBread
       {currentMode && (
         <>
           <ChevronRight className="h-3.5 w-3.5 opacity-50" />
-          <span className="text-foreground font-semibold">{currentMode}</span>
+          {currentModeOnClick && !isDeepest ? (
+            <button
+              onClick={currentModeOnClick}
+              className="hover:text-foreground transition-colors"
+            >
+              {currentMode}
+            </button>
+          ) : (
+            <span className={cn(isDeepest && "text-foreground font-semibold")}>{currentMode}</span>
+          )}
         </>
       )}
 
       {items?.map((item, index) => (
         <span key={index} className="flex items-center gap-2">
           <ChevronRight className="h-3.5 w-3.5 opacity-50" />
-          {item.to ? (
-            <button 
-              onClick={() => navigate(item.to!)}
+          {item.to || item.onClick ? (
+            <button
+              onClick={() => (item.onClick ? item.onClick() : navigate(item.to!))}
               className="hover:text-foreground transition-colors"
             >
               {item.label}
