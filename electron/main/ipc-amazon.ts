@@ -486,11 +486,15 @@ export function registerAmazonHandlers(gatewayManager: GatewayManager, mainWindo
       const onPhaseSignal = (signal: { phase: string; step: string }) => {
         mainWindow?.webContents.send('amazon:phaseProgress', signal);
       };
+      const onAsinSkipped = (data: { asin: string; reason: string }) => {
+        mainWindow?.webContents.send('amazon:asinSkipped', { workflowId: workflow.id, ...data });
+      };
 
       runner?.on('progress', onProgress);
       runner?.on('intervention', onIntervention);
       runner?.on('qc-result', onQcResult);
       runner?.on('phase-signal', onPhaseSignal);
+      runner?.on('asin-skipped', onAsinSkipped);
 
       try {
       // ── Process Expanded Filters ──────────────────────────────────────────
@@ -542,6 +546,7 @@ export function registerAmazonHandlers(gatewayManager: GatewayManager, mainWindo
         runner?.off('intervention', onIntervention);
         runner?.off('qc-result', onQcResult);
         runner?.off('phase-signal', onPhaseSignal);
+        runner?.off('asin-skipped', onAsinSkipped);
       }
     } catch (err) {
       return { success: false, error: String(err) };

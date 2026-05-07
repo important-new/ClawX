@@ -6,6 +6,7 @@ import { resolveUvBin } from '../../../utils/uv-setup';
 const PHASE_RE = /^PHASE:\s*(\S+)\s+(\S+)/;
 const QC_RESULT_RE = /^QC_RESULT:\s*(.+)/;
 const CAPTCHA_SIGNAL_RE = /^CAPTCHA:\s*(\S+)/;
+const SKIP_ASIN_RE = /^SKIP_ASIN:\s*([A-Z0-9]+)(?:\s+(.+))?/;
 
 export interface ExecutionResult {
   code: number | null;
@@ -80,6 +81,14 @@ export class ToolExecutor extends EventEmitter {
           const captchaMatch = trimmed.match(CAPTCHA_SIGNAL_RE);
           if (captchaMatch) {
             this.emit('intervention', { type: 'captcha' });
+          }
+
+          const skipMatch = trimmed.match(SKIP_ASIN_RE);
+          if (skipMatch) {
+            this.emit('asin-skipped', {
+              asin: skipMatch[1],
+              reason: skipMatch[2] ?? 'unknown',
+            });
           }
         }
       });

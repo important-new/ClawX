@@ -353,6 +353,65 @@ export function ChatMode() {
     // Context injection is handled by the useEffect watching pipelineSession.loaded
   }, [aiMode, pipelineSession])
 
+  // ── Pipeline runtime event listeners ──────────────────────────────────────
+  // Surface captcha interventions and soft-skipped ASINs (from amazon-side
+  // PROGRESS: PAUSED / SKIP_ASIN signals) as inline assistant messages, so the
+  // operator sees them in the chat rather than having to watch terminal logs.
+  useEffect(() => {
+    const ipc = (window as any).electron?.ipcRenderer
+    if (!ipc?.on) return
+
+    const skippedAsins: string[] = []
+    let flushTimer: ReturnType<typeof setTimeout> | null = null
+    const flushSkipped = () => {
+      if (skippedAsins.length === 0) return
+      const list = skippedAsins.splice(0, skippedAsins.length)
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: `⚠️ 已跳过 ${list.length} 个 ASIN（数据采集失败但流水线继续）：\n${list
+            .map((s) => `- ${s}`)
+            .join('\n')}\n\n这些 ASIN 在最终报告中不会出现；如需补爬，参考 \`SELECTION_LOGIC.md\` 中的 recrawl 命令。`,
+        },
+      ])
+    }
+
+    const onIntervention = (data: any) => {
+      const kind = data?.type === 'captcha' ? '人机验证' : '中断'
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          content:
+            `🛑 流水线遇到${kind}，需要你介入：\n\n` +
+            `1. 切到 Chrome 完成 SellerSprite / Amazon 弹出的验证（"我不是机器人"或滑块）\n` +
+            `2. 完成后点击"恢复"按钮（在 PipelineWizard 页面）\n` +
+            `3. 已采集的数据不会丢失，恢复后会继续从断点跑\n\n` +
+            `如果反复触发验证码，可以考虑加大 ASIN 间延迟或暂停流水线手动登录 sellersprite.com 后再续。`,
+        },
+      ])
+    }
+
+    const onSkipped = (data: any) => {
+      if (!data?.asin) return
+      skippedAsins.push(`${data.asin}${data.reason ? ` (${data.reason})` : ''}`)
+      if (flushTimer) clearTimeout(flushTimer)
+      flushTimer = setTimeout(flushSkipped, 1500) // batch within 1.5s window
+    }
+
+    const unInt = ipc.on('amazon:workflowIntervention', onIntervention)
+    const unSkip = ipc.on('amazon:asinSkipped', onSkipped)
+    return () => {
+      if (typeof unInt === 'function') unInt()
+      if (typeof unSkip === 'function') unSkip()
+      if (flushTimer) {
+        clearTimeout(flushTimer)
+        flushSkipped()
+      }
+    }
+  }, [])
+
   // When session finishes loading, inject context into AI chat.
   // We extract a structured summary (Top-N + cost-ratio buckets + viability)
   // instead of dumping the raw markdown — for a 30+ product report this drops

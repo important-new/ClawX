@@ -222,6 +222,7 @@ const electronAPI = {
         'amazon:workflowIntervention',
         'amazon:qualityCheckResult',
         'amazon:phaseProgress',
+        'amazon:asinSkipped',
       ];
 
       if (validChannels.includes(channel) || channel.startsWith('ext:')) {
@@ -279,6 +280,7 @@ const electronAPI = {
         'amazon:workflowIntervention',
         'amazon:qualityCheckResult',
         'amazon:phaseProgress',
+        'amazon:asinSkipped',
       ];
 
       if (validChannels.includes(channel) || channel.startsWith('ext:')) {
