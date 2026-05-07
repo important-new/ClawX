@@ -18,7 +18,7 @@ import { useInstalledSkills } from './hooks/useInstalledSkills'
 import { useMcpDataFetch } from './hooks/useMcpDataFetch'
 import { useAIEnrichedAnalysis } from './hooks/useAIEnrichedAnalysis'
 import { runAnalysis } from './engine'
-import { usePipelineSession } from './hooks/usePipelineSession'
+import { usePipelineSession, formatSummaryForAI } from './hooks/usePipelineSession'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -353,19 +353,32 @@ export function ChatMode() {
     // Context injection is handled by the useEffect watching pipelineSession.loaded
   }, [aiMode, pipelineSession])
 
-  // When session finishes loading, inject context into AI chat
+  // When session finishes loading, inject context into AI chat.
+  // We extract a structured summary (Top-N + cost-ratio buckets + viability)
+  // instead of dumping the raw markdown — for a 30+ product report this drops
+  // ~200K tokens of noise to <100 tokens of signal.
   useEffect(() => {
     if (!pipelineSession.loaded || !aiMode) return
-    const { name, stats, report } = pipelineSession.loaded
+    const { name, stats, summary, report } = pipelineSession.loaded
     const statsLines = Object.entries(stats)
       .map(([, v]) => `- ${v.label}: ${v.count} 条`)
       .join('\n')
-    const contextMsg = [
-      `[已加载 Pipeline 会话: ${name}]`,
-      statsLines ? `\n漏斗统计:\n${statsLines}` : '',
-      report ? `\n\n报告摘要 (前2000字):\n${report.slice(0, 2000)}` : '\n(无报告文件)',
-    ].join('')
-    gatewayChat.send(`请基于以下 Pipeline 数据进行分析和解答：\n\n${contextMsg}`)
+    const parts: string[] = [`[已加载 Pipeline 会话: ${name}]`]
+    if (statsLines) parts.push(`\n漏斗统计:\n${statsLines}`)
+    if (summary) {
+      parts.push(`\n${formatSummaryForAI(summary)}`)
+      parts.push(
+        '\n（如需展开某 ASIN 的详细分析、关键词、店铺、Keepa 截图等，请直接提问；'
+        + '若需要不可行产品名单或更深层关键词数据，也可以问我。）',
+      )
+    } else if (report) {
+      // Fallback: report exists but couldn't be parsed (legacy format) — send a
+      // tiny slice to avoid blowing up the prompt.
+      parts.push(`\n报告摘要 (legacy, 前 1000 字):\n${report.slice(0, 1000)}`)
+    } else {
+      parts.push('\n(无报告文件)')
+    }
+    gatewayChat.send(`请基于以下 Pipeline 数据进行分析和解答：\n\n${parts.join('')}`)
   }, [pipelineSession.loaded]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, gatewayChat.messages])
