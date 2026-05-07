@@ -207,11 +207,18 @@ export function PipelineWizard() {
             args[`filter:${key}`] = val;
           }
         }
-        // Apply .ui.json declared defaults (e.g. force=true, format="both")
+        // Apply .ui.json declared defaults (e.g. force=true, format="both").
+        // Skip `filter:*` defaults — they originate from a snapshot of
+        // filters_default.json captured at app start by ipc-amazon's
+        // listTools handler. ipc-amazon also re-reads that file at workflow
+        // launch and merges it into a temp wizard_filters JSON; re-injecting
+        // stale snapshot defaults here would let an outdated value (e.g.
+        // an old `include_categories` array) clobber the freshly-read file.
         for (const arg of (phaseTool.arguments || []) as any[]) {
-          if (arg?.default !== undefined && !(arg.name in args)) {
-            args[arg.name] = arg.default;
-          }
+          if (arg?.default === undefined) continue;
+          if (typeof arg.name === 'string' && arg.name.startsWith('filter:')) continue;
+          if (arg.name in args) continue;
+          args[arg.name] = arg.default;
         }
         return { toolId: phaseTool.id, args };
       });
