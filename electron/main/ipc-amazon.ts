@@ -489,12 +489,29 @@ export function registerAmazonHandlers(gatewayManager: GatewayManager, mainWindo
       const onAsinSkipped = (data: { asin: string; reason: string }) => {
         mainWindow?.webContents.send('amazon:asinSkipped', { workflowId: workflow.id, ...data });
       };
+      // Workflow-level step transitions — fired by WorkflowExecutor before
+      // each step starts. UI uses this to advance phase badges + reset
+      // per-step progress, even when the underlying script is silent.
+      const onStepStarted = (data: { step: number; total: number; name: string; toolId: string }) => {
+        event.sender.send('amazon:workflowProgress', {
+          workflowId: workflow.id,
+          currentStep: data.step,
+          totalSteps: data.total,
+          stepName: data.name,
+          toolId: data.toolId,
+          // Coarse progress: rounded fraction of completed steps. Per-step
+          // PROGRESS: X% lines (when scripts emit them) refine within this.
+          percent: Math.floor((data.step / data.total) * 100),
+          status: data.name,
+        });
+      };
 
       runner?.on('progress', onProgress);
       runner?.on('intervention', onIntervention);
       runner?.on('qc-result', onQcResult);
       runner?.on('phase-signal', onPhaseSignal);
       runner?.on('asin-skipped', onAsinSkipped);
+      workflowRunner?.on('step-started', onStepStarted);
 
       try {
       // ── Process Expanded Filters ──────────────────────────────────────────
@@ -547,6 +564,7 @@ export function registerAmazonHandlers(gatewayManager: GatewayManager, mainWindo
         runner?.off('qc-result', onQcResult);
         runner?.off('phase-signal', onPhaseSignal);
         runner?.off('asin-skipped', onAsinSkipped);
+        workflowRunner?.off('step-started', onStepStarted);
       }
     } catch (err) {
       return { success: false, error: String(err) };

@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events';
 import { ToolExecutor, ExecutionResult } from './executor';
 import { PluginTool } from './scanner';
 
@@ -15,7 +16,7 @@ export interface Workflow {
   lastRunAt?: number;
 }
 
-export class WorkflowExecutor {
+export class WorkflowExecutor extends EventEmitter {
   private executor: ToolExecutor;
   private isRunning = false;
   private currentStepIndex = -1;
@@ -26,6 +27,7 @@ export class WorkflowExecutor {
   private pausedTools: PluginTool[] = [];
 
   constructor(executor: ToolExecutor) {
+    super();
     this.executor = executor;
   }
 
@@ -42,6 +44,15 @@ export class WorkflowExecutor {
         if (!tool) throw new Error(`Tool ${step.toolId} not found in workflow`);
 
         console.log(`[Workflow] Starting step ${i + 1}/${workflow.steps.length}: ${tool.name}`);
+        // Notify UI that step transition happened so progress + phase
+        // status badges advance even when the underlying script is silent
+        // (e.g. search_by_category doesn't emit PROGRESS: X% lines).
+        this.emit('step-started', {
+          step: i,
+          total: workflow.steps.length,
+          name: tool.name,
+          toolId: tool.id,
+        });
 
         const result: ExecutionResult = await this.executor.execute(tool.path, step.args);
 
@@ -97,6 +108,12 @@ export class WorkflowExecutor {
         if (!tool) throw new Error(`Tool ${step.toolId} not found in workflow`);
 
         console.log(`[Workflow] Resuming step ${i + 1}/${workflow.steps.length}: ${tool.name}`);
+        this.emit('step-started', {
+          step: i,
+          total: workflow.steps.length,
+          name: tool.name,
+          toolId: tool.id,
+        });
 
         const result: ExecutionResult = await this.executor.execute(tool.path, step.args);
 
