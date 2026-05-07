@@ -492,15 +492,27 @@ export function registerAmazonHandlers(gatewayManager: GatewayManager, mainWindo
       // Workflow-level step transitions — fired by WorkflowExecutor before
       // each step starts. UI uses this to advance phase badges + reset
       // per-step progress, even when the underlying script is silent.
+      //
+      // The renderer's handleProgress treats `currentStep` as a phase index
+      // (0..5 for Phase 1..6), not a workflow step index. With 16 steps
+      // mapped onto 6 phases, forwarding the raw step index would advance
+      // the UI 16 phases ahead of reality (e.g. step 2 = stage 1.2 still in
+      // Phase 1, but UI would mark Phase 2 as running). Resolve by mapping
+      // toolId → tool.stage → phaseIndex (= stage - 1).
+      const stepTools = scanTools();
       const onStepStarted = (data: { step: number; total: number; name: string; toolId: string }) => {
+        const tool = stepTools.find(t => t.id === data.toolId);
+        const stageNum = Number(tool?.stage) || 1;
+        const phaseIndex = Math.max(0, stageNum - 1);
         event.sender.send('amazon:workflowProgress', {
           workflowId: workflow.id,
-          currentStep: data.step,
+          currentStep: phaseIndex,
           totalSteps: data.total,
           stepName: data.name,
           toolId: data.toolId,
-          // Coarse progress: rounded fraction of completed steps. Per-step
-          // PROGRESS: X% lines (when scripts emit them) refine within this.
+          // Coarse progress: rounded fraction of completed workflow steps
+          // (independent of phase advancement above). Per-step PROGRESS: X%
+          // lines (when scripts emit them) refine within this.
           percent: Math.floor((data.step / data.total) * 100),
           status: data.name,
         });

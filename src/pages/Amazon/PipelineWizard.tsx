@@ -103,7 +103,8 @@ export function PipelineWizard() {
   // ── IPC listeners ──────────────────────────────────────────────────────────
 
   useEffect(() => {
-    const handleProgress = (_: any, data: any) => {
+    const handleProgress = (data: any) => {
+      if (!data) return;
       if (data.percent !== undefined) store.setProgress(data.percent);
       if (data.currentStep !== undefined) {
         store.setCurrentPhaseIndex(data.currentStep);
@@ -119,7 +120,8 @@ export function PipelineWizard() {
       }
     };
 
-    const handleIntervention = (_: any, data: any) => {
+    const handleIntervention = (data: any) => {
+      if (!data) return;
       const enabledPhases = store.phases.filter(p => p.enabled);
       const currentPhase = enabledPhases[store.currentPhaseIndex];
       if (currentPhase) {
@@ -138,13 +140,14 @@ export function PipelineWizard() {
       toast.warning('流程已暂停：需要手动干预');
     };
 
-    const handleQcResult = (_: any, result: any) => {
+    const handleQcResult = (result: any) => {
       if (result?.phase && 'pass' in result) {
         usePipelineStore.getState().setQualityCheckResult(result.phase, result);
       }
     };
 
-    const handlePhaseSignal = (_: any, signal: any) => {
+    const handlePhaseSignal = (signal: any) => {
+      if (!signal) return;
       usePipelineStore.getState().updatePhaseProgress({
         phase: signal.phase,
         phaseStep: signal.step,
@@ -182,6 +185,8 @@ export function PipelineWizard() {
     // Build workflow steps from enabled phases + tools
     const enabledPhases = store.phases.filter(p => p.enabled);
     const sortedTools = [...tools].sort((a, b) => (Number(a.stage) || 0) - (Number(b.stage) || 0));
+    console.log('[PipelineWizard.startPipeline] tools.length =', tools.length,
+      'ids =', sortedTools.map(t => `${t.id}(stage=${t.stage})`).join(','));
 
     // Map phases to tools by stage number.
     // Stage 6 (report generation) actually contains multiple post-processing

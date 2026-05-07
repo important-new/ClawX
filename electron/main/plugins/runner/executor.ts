@@ -39,10 +39,16 @@ export class ToolExecutor extends EventEmitter {
     return new Promise((resolve) => {
       // Use uv run to execute the python script
       // e.g., uv run path/to/script.py --session mysession
+      // stdio: 'ignore' on stdin prevents uv from blocking on TTY/stdin
+      // detection when we run via shell: true. Without this, the inherited
+      // pipe handle can leave uv idle indefinitely (observed: 5+ min, 0
+      // CPU) on Windows even though the script itself exits in <1s when
+      // invoked directly from a real terminal.
       this.process = spawn(useShell ? quoteForCmd(uvBin) : uvBin, ['run', toolPath, ...formattedArgs], {
         cwd,
         shell: useShell,
         env,
+        stdio: ['ignore', 'pipe', 'pipe'],
       });
 
       this.process.stdout?.on('data', (data) => {
