@@ -204,6 +204,16 @@ export function PipelineWizard() {
         if (declared.has('cdp-port')) args['cdp-port'] = store.cdpPort;
         if (declared.has('filters-file')) {
           for (const [key, val] of Object.entries(store.filters)) {
+            // Array / object filter fields (e.g. include_categories,
+            // exclude_categories) come from filters_default.json which
+            // ipc-amazon re-reads at workflow launch. The renderer's
+            // store.filters got these arrays as a *snapshot* at app start
+            // and won't auto-refresh when the file changes — re-injecting
+            // them here would let the snapshot override the live file.
+            // Scalar fields (numbers / booleans / strings) the user can
+            // actually edit in PipelineFilterForm continue to flow through.
+            if (Array.isArray(val)) continue;
+            if (val !== null && typeof val === 'object') continue;
             args[`filter:${key}`] = val;
           }
         }
