@@ -12,11 +12,14 @@ export interface ExecutionResult {
   code: number | null;
   signal: string | null;
   error?: string;
+  /** True if the script emitted any intervention (captcha) signal during this run. */
+  interventionEmitted?: boolean;
 }
 
 export class ToolExecutor extends EventEmitter {
   private process: ChildProcess | null = null;
   private currentToolId: string | null = null;
+  private interventionEmitted = false;
 
   async execute(
     toolPath: string,
@@ -32,6 +35,7 @@ export class ToolExecutor extends EventEmitter {
     if (bundledPython) {
       env.UV_PYTHON = bundledPython;
     }
+    this.interventionEmitted = false;
     return new Promise((resolve) => {
       // Use uv run to execute the python script
       // e.g., uv run path/to/script.py --session mysession
@@ -57,6 +61,7 @@ export class ToolExecutor extends EventEmitter {
         if (output.includes('PROGRESS: PAUSED (CAPTCHA DETECTED)') ||
             output.includes('PROGRESS: PAUSED (AMAZON CAPTCHA)') ||
             output.includes('PROGRESS: PAUSED (SS CAPTCHA)')) {
+          this.interventionEmitted = true;
           this.emit('intervention', { type: 'captcha' });
         }
 
@@ -80,7 +85,8 @@ export class ToolExecutor extends EventEmitter {
 
           const captchaMatch = trimmed.match(CAPTCHA_SIGNAL_RE);
           if (captchaMatch) {
-            this.emit('intervention', { type: 'captcha' });
+            this.interventionEmitted = true;
+          this.emit('intervention', { type: 'captcha' });
           }
 
           const skipMatch = trimmed.match(SKIP_ASIN_RE);
@@ -99,12 +105,12 @@ export class ToolExecutor extends EventEmitter {
 
       this.process.on('close', (code, signal) => {
         this.process = null;
-        resolve({ code, signal });
+        resolve({ code, signal, interventionEmitted: this.interventionEmitted });
       });
 
       this.process.on('error', (err) => {
         this.process = null;
-        resolve({ code: 1, signal: null, error: err.message });
+        resolve({ code: 1, signal: null, error: err.message, interventionEmitted: this.interventionEmitted });
       });
     });
   }

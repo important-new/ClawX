@@ -46,7 +46,12 @@ export class WorkflowExecutor {
         const result: ExecutionResult = await this.executor.execute(tool.path, step.args);
 
         if (result.code !== 0) {
-          if (result.code === 2) {
+          // Treat as paused-for-intervention only when the script actually
+          // emitted a captcha/intervention signal during this run. A bare
+          // exit code 2 (e.g. argparse error, --help, warn) MUST surface as
+          // a failure — otherwise unrelated argparse failures look like the
+          // pipeline is "waiting for the user".
+          if (result.interventionEmitted) {
             console.warn(`[Workflow] Step ${i + 1} paused for intervention.`);
             // Save paused state for resume
             this.pausedWorkflow = workflow;
