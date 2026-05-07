@@ -1,10 +1,13 @@
-import i18n from '@/i18n';
+import i18n from 'i18next';
 import type {
   RendererExtension,
   NavItemDef,
   RouteDef,
   SettingsSectionDef,
   SkillDetailMetaProps,
+  ChatComposerStatusProps,
+  ChatBeforeSendContext,
+  ChatBeforeSendResult,
 } from './types';
 import type { ComponentType } from 'react';
 
@@ -60,6 +63,33 @@ class RendererExtensionRegistry {
 
   getSkillDetailMetaComponents(): ComponentType<SkillDetailMetaProps>[] {
     return this.extensions.flatMap((ext) => ext.skills?.detailMetaComponents ?? []);
+  }
+
+  getChatComposerStatusComponents(): ComponentType<ChatComposerStatusProps>[] {
+    return this.extensions.flatMap((ext) => ext.chat?.composerStatusComponents ?? []);
+  }
+
+  hasChatBeforeSendHooks(): boolean {
+    return this.extensions.some((ext) => (ext.chat?.beforeSend?.length ?? 0) > 0);
+  }
+
+  async runChatBeforeSend(context: ChatBeforeSendContext): Promise<ChatBeforeSendResult> {
+    for (const ext of this.extensions) {
+      for (const hook of ext.chat?.beforeSend ?? []) {
+        try {
+          const result = await hook(context);
+          if (!result.ok) {
+            return result;
+          }
+        } catch (err) {
+          return {
+            ok: false,
+            message: err instanceof Error ? err.message : String(err),
+          };
+        }
+      }
+    }
+    return { ok: true };
   }
 
   async initializeAll(): Promise<void> {

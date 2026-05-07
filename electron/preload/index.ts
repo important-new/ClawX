@@ -128,6 +128,13 @@ const electronAPI = {
         'file:stageBuffer',
         'media:getThumbnails',
         'media:saveImage',
+        // File preview (sandboxed read/write/list/tree)
+        'file:readText',
+        'file:readBinary',
+        'file:writeText',
+        'file:stat',
+        'file:listDir',
+        'file:listTree',
         // Chat send with media (reads staged files in main process)
         'chat:sendWithMedia',
         // Session management
@@ -181,6 +188,8 @@ const electronAPI = {
         'gateway:status-changed',
         'gateway:message',
         'gateway:notification',
+        'gateway:health-changed',
+        'gateway:presence-changed',
         'gateway:channel-status',
         'gateway:chat-message',
         'channel:whatsapp-qr',
@@ -238,6 +247,8 @@ const electronAPI = {
         'gateway:status-changed',
         'gateway:message',
         'gateway:notification',
+        'gateway:health-changed',
+        'gateway:presence-changed',
         'gateway:channel-status',
         'gateway:chat-message',
         'channel:whatsapp-qr',
