@@ -116,10 +116,38 @@ export class ToolExecutor extends EventEmitter {
   }
 
   stop() {
-    if (this.process) {
-      this.process.kill('SIGINT');
-      this.process = null;
+    if (!this.process) return;
+    const pid = this.process.pid;
+    // `uv run script.py` spawns uv as the immediate child, which then spawns
+    // the actual python interpreter (and python may itself spawn playwright /
+    // browser children). On Windows, ChildProcess.kill('SIGINT') is mapped to
+    // SIGTERM and only signals the direct child — uv dies but python keeps
+    // running as an orphan, and the UI thinks the workflow stopped while the
+    // pipeline is still hammering SellerSprite in the background.
+    //
+    // Use taskkill /T /F (Windows) or process.kill -- -<pgid> (POSIX) to take
+    // down the whole tree.
+    if (pid !== undefined) {
+      if (process.platform === 'win32') {
+        try {
+          require('node:child_process').execFileSync('taskkill', ['/T', '/F', '/PID', String(pid)], {
+            stdio: 'ignore',
+          });
+        } catch {
+          // Already exited or no permission — fall through to .kill()
+          try { this.process.kill('SIGKILL'); } catch { /* ignore */ }
+        }
+      } else {
+        // POSIX: signal the entire process group started via { detached: true } if available,
+        // otherwise just SIGKILL the direct child.
+        try {
+          process.kill(-pid, 'SIGTERM');
+        } catch {
+          try { this.process.kill('SIGKILL'); } catch { /* ignore */ }
+        }
+      }
     }
+    this.process = null;
   }
 
   isRunning() {
