@@ -171,6 +171,9 @@
         "skillLoading": "Загрузка Skill...",
         "skillEmpty": "Подходящие Skill не найдены",
         "pickAgent": "Выбрать агента",
+        "pickModel": "Выбрать модель",
+        "modelPickerTitle": "Переключить модель",
+        "modelSwitchFailed": "Не удалось переключить модель: {{error}}",
         "clearTarget": "Очистить целевого агента",
         "targetChip": "@{{agent}}",
         "agentPickerTitle": "Направить следующее сообщение другому агенту",
@@ -179,7 +182,9 @@
         "stop": "Остановить",
         "gatewayConnected": "подключён",
         "gatewayStatus": "шлюз {{state}} | порт: {{port}} {{pid}}",
-        "retryFailedAttachments": "Повторить неудавшиеся вложения"
+        "retryFailedAttachments": "Повторить неудавшиеся вложения",
+        "skillPreviewTooltip": "Предпросмотр SKILL.md",
+        "skillPreviewNotFound": "Skill не найден. Откройте список Skill, чтобы обновить его."
     },
     "historyBuckets": {
         "today": "Сегодня",

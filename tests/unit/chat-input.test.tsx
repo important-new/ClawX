@@ -4,15 +4,26 @@ import { ChatInput } from '@/pages/Chat/ChatInput';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { hostApiFetch } from '@/lib/host-api';
 
-const { agentsState, chatState, gatewayState } = vi.hoisted(() => ({
+const { agentsState, chatState, gatewayState, providersState, artifactPanelMocks } = vi.hoisted(() => ({
   agentsState: {
     agents: [] as Array<Record<string, unknown>>,
+    defaultModelRef: null as string | null,
+    updateAgentModel: vi.fn(),
   },
   chatState: {
     currentAgentId: 'main',
   },
   gatewayState: {
     status: { state: 'running', port: 18789 },
+  },
+  providersState: {
+    accounts: [] as Array<Record<string, unknown>>,
+    statuses: [] as Array<Record<string, unknown>>,
+    defaultAccountId: null as string | null,
+    refreshProviderSnapshot: vi.fn(),
+  },
+  artifactPanelMocks: {
+    openPreview: vi.fn(),
   },
 }));
 
@@ -26,6 +37,14 @@ vi.mock('@/stores/chat', () => ({
 
 vi.mock('@/stores/gateway', () => ({
   useGatewayStore: (selector: (state: typeof gatewayState) => unknown) => selector(gatewayState),
+}));
+
+vi.mock('@/stores/providers', () => ({
+  useProviderStore: (selector: (state: typeof providersState) => unknown) => selector(providersState),
+}));
+
+vi.mock('@/stores/artifact-panel', () => ({
+  useArtifactPanel: (selector: (state: typeof artifactPanelMocks) => unknown) => selector(artifactPanelMocks),
 }));
 
 vi.mock('@/lib/host-api', () => ({
@@ -72,6 +91,10 @@ function translate(key: string, vars?: Record<string, unknown>): string {
       return `gateway ${String(vars?.state ?? '')} | port: ${String(vars?.port ?? '')} ${String(vars?.pid ?? '')}`.trim();
     case 'composer.retryFailedAttachments':
       return 'Retry failed attachments';
+    case 'composer.skillPreviewTooltip':
+      return 'Preview SKILL.md';
+    case 'composer.skillPreviewNotFound':
+      return 'Skill not found';
     default:
       return key;
   }
@@ -94,9 +117,16 @@ function renderChatInput(onSend = vi.fn()) {
 describe('ChatInput agent targeting', () => {
   beforeEach(() => {
     agentsState.agents = [];
+    agentsState.defaultModelRef = null;
+    agentsState.updateAgentModel.mockReset();
     chatState.currentAgentId = 'main';
     gatewayState.status = { state: 'running', port: 18789 };
+    providersState.accounts = [];
+    providersState.statuses = [];
+    providersState.defaultAccountId = null;
+    providersState.refreshProviderSnapshot.mockReset();
     vi.mocked(hostApiFetch).mockReset();
+    artifactPanelMocks.openPreview.mockReset();
   });
 
   it('hides the @agent picker when only one agent is configured', () => {
@@ -449,5 +479,53 @@ describe('ChatInput agent targeting', () => {
 
     expect(textbox).toHaveValue('/create-rule  /create-rule  ');
     expect(screen.getAllByTestId('chat-composer-skill-token')).toHaveLength(2);
+  });
+
+  it('opens the artifact preview panel when the inline skill token is clicked', async () => {
+    agentsState.agents = [
+      {
+        id: 'main',
+        name: 'Main',
+        isDefault: true,
+        modelDisplay: 'MiniMax',
+        inheritedModel: true,
+        workspace: '~/.openclaw/workspace',
+        agentDir: '~/.openclaw/agents/main/agent',
+        mainSessionKey: 'agent:main:main',
+        channelTypes: [],
+      },
+    ];
+    vi.mocked(hostApiFetch).mockResolvedValue({
+      success: true,
+      skills: [
+        {
+          name: 'create-skill',
+          description: 'Create and refine reusable skills.',
+          source: 'workspace',
+          sourceLabel: 'Workspace',
+          manifestPath: '/tmp/workspace/skill/create-skill/SKILL.md',
+          baseDir: '/tmp/workspace/skill/create-skill',
+        },
+      ],
+    });
+
+    renderChatInput();
+
+    const textbox = screen.getByRole('textbox') as HTMLTextAreaElement;
+    fireEvent.change(textbox, { target: { value: 'Draft a new helper' } });
+    textbox.focus();
+    textbox.setSelectionRange('Draft '.length, 'Draft '.length);
+
+    fireEvent.click(screen.getByTitle('Choose skill'));
+    fireEvent.click(await screen.findByText('/create-skill'));
+
+    fireEvent.click(screen.getByTestId('chat-composer-skill-token'));
+
+    expect(artifactPanelMocks.openPreview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filePath: '/tmp/workspace/skill/create-skill/SKILL.md',
+        fileName: 'SKILL.md',
+      }),
+    );
   });
 });

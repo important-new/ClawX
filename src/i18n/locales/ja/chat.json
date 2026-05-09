@@ -171,6 +171,9 @@
         "skillLoading": "Skill を読み込み中...",
         "skillEmpty": "一致する Skill がありません",
         "pickAgent": "Agent を選択",
+        "pickModel": "モデルを選択",
+        "modelPickerTitle": "モデルを切り替え",
+        "modelSwitchFailed": "モデルの切り替えに失敗しました: {{error}}",
         "clearTarget": "送信先 Agent をクリア",
         "targetChip": "@{{agent}}",
         "agentPickerTitle": "次のメッセージを別の Agent に直接送信します",
@@ -179,7 +182,9 @@
         "stop": "停止",
         "gatewayConnected": "接続済み",
         "gatewayStatus": "ゲートウェイ {{state}} | ポート: {{port}} {{pid}}",
-        "retryFailedAttachments": "失敗した添付を再試行"
+        "retryFailedAttachments": "失敗した添付を再試行",
+        "skillPreviewTooltip": "SKILL.md をプレビュー",
+        "skillPreviewNotFound": "この Skill が見つかりません。Skill ピッカーを開いて一覧を更新してください。"
     },
     "historyBuckets": {
         "today": "今日",

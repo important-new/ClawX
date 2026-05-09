@@ -41,6 +41,31 @@ const history = [
   },
 ];
 
+const attachedFileHistory = [
+  {
+    role: 'user',
+    id: 'user-attached-1',
+    content: [{ type: 'text', text: '查看这个技能文件' }],
+    timestamp: Date.now(),
+  },
+  {
+    role: 'assistant',
+    id: 'assistant-attached-1',
+    content: [{ type: 'text', text: '这是文件。' }],
+    _attachedFiles: [
+      {
+        fileName: 'SKILL.md',
+        mimeType: 'text/markdown',
+        fileSize: 128,
+        preview: null,
+        filePath: '/workspace/skills/open-xueqiu/SKILL.md',
+        source: 'tool-result',
+      },
+    ],
+    timestamp: Date.now(),
+  },
+];
+
 test.describe('ClawX chat file changes', () => {
   test('shows line stats on generated file cards', async ({ launchElectronApp }) => {
     const app = await launchElectronApp({ skipSetup: true });
@@ -102,8 +127,7 @@ test.describe('ClawX chat file changes', () => {
         root.classList.remove('dark');
         root.classList.add('light');
       });
-      await expect(page.getByRole('button', { name: '工作空间' })).toHaveCount(0);
-      await expect(page.getByText('查看文件变更')).toHaveCount(0);
+      await expect(page.getByTestId('artifact-panel')).toHaveCount(0);
 
       const fileCard = page.getByRole('button', { name: /demo\.ts/ }).first();
       await expect(fileCard).toBeVisible({ timeout: 30_000 });
@@ -111,7 +135,9 @@ test.describe('ClawX chat file changes', () => {
       await expect(fileCard).toContainText('-1');
 
       await fileCard.click();
-      await expect(page.locator('aside').getByRole('button', { name: '工作空间' })).toHaveCount(0);
+      const sidePanel = page.getByTestId('artifact-panel');
+      await expect(sidePanel).toBeVisible({ timeout: 30_000 });
+      await expect(sidePanel.getByTestId('artifact-panel-tab-browser')).toBeVisible();
       await expect(fileCard).toContainText('demo.ts');
 
       const diffBackground = page.getByTestId('monaco-diff-viewer').locator('.monaco-editor-background').first();
@@ -126,6 +152,77 @@ test.describe('ClawX chat file changes', () => {
 
       expect(colors.diffBackground).toBe(colors.appBackground);
       expect(colors.diffBackground).not.toBe('rgb(255, 255, 255)');
+    } finally {
+      await closeElectronApp(app);
+    }
+  });
+
+  test('keeps an attached file selected after switching through workspace', async ({ launchElectronApp }) => {
+    const app = await launchElectronApp({ skipSetup: true });
+
+    try {
+      await installIpcMocks(app, {
+        gatewayStatus: { state: 'running', port: 18789, pid: 12345 },
+        gatewayRpc: {
+          [stableStringify(['sessions.list', {}])]: {
+            success: true,
+            result: {
+              sessions: [{ key: SESSION_KEY, displayName: 'main' }],
+            },
+          },
+          [stableStringify(['chat.history', { sessionKey: SESSION_KEY, limit: 200 }])]: {
+            success: true,
+            result: { messages: attachedFileHistory },
+          },
+          [stableStringify(['chat.history', { sessionKey: SESSION_KEY, limit: 1000 }])]: {
+            success: true,
+            result: { messages: attachedFileHistory },
+          },
+        },
+        hostApi: {
+          [stableStringify(['/api/gateway/status', 'GET'])]: {
+            ok: true,
+            data: {
+              status: 200,
+              ok: true,
+              json: { state: 'running', port: 18789, pid: 12345 },
+            },
+          },
+          [stableStringify(['/api/agents', 'GET'])]: {
+            ok: true,
+            data: {
+              status: 200,
+              ok: true,
+              json: {
+                success: true,
+                agents: [{ id: 'main', name: 'main', workspace: '/workspace' }],
+              },
+            },
+          },
+        },
+      });
+
+      const page = await getStableWindow(app);
+      try {
+        await page.reload();
+      } catch (error) {
+        if (!String(error).includes('ERR_FILE_NOT_FOUND')) {
+          throw error;
+        }
+      }
+
+      await expect(page.getByTestId('main-layout')).toBeVisible();
+      const skillFileCard = page.locator('[title="Open file"]').filter({ hasText: 'SKILL.md' }).first();
+      await expect(skillFileCard).toBeVisible({ timeout: 30_000 });
+      await skillFileCard.click();
+
+      const sidePanel = page.getByTestId('artifact-panel');
+      await expect(sidePanel.getByRole('heading', { name: 'SKILL.md' })).toBeVisible({ timeout: 30_000 });
+
+      await sidePanel.getByTestId('artifact-panel-tab-browser').click();
+      await sidePanel.getByTestId('artifact-panel-tab-preview').click();
+      await expect(sidePanel.getByRole('heading', { name: 'SKILL.md' })).toBeVisible();
+      await expect(sidePanel.getByText('No file selected')).toHaveCount(0);
     } finally {
       await closeElectronApp(app);
     }

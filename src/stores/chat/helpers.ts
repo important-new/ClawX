@@ -360,7 +360,14 @@ function extractRawFilePaths(text: string): Array<{ filePath: string; mimeType: 
   // normally look like a URL scheme.  After matching we punch the entire
   // `MEDIA:<path>` span out of the working text so the generic unix
   // regex below doesn't double-count the bare `/path` suffix.
-  const taggedRegex = new RegExp(`(?:^|[\\s(\\[{>])(?:MEDIA|media):((?:\\/|~\\/)[^\\s\\n"'()\\[\\],<>` + '`' + `]*?\\.(?:${exts}))`, 'g');
+  // The character class deliberately allows ASCII spaces inside the path so
+  // that macOS' default screenshot filename ("截屏 2026-05-06 17.46.51.png")
+  // and other space-containing paths the agent emits with the explicit
+  // `MEDIA:` marker still resolve. Newline and quote characters remain
+  // path terminators so we don't accidentally swallow trailing prose.
+  // The non-greedy `*?` anchored to `\.<ext>` keeps the match minimal so
+  // multiple `MEDIA:` markers in one paragraph still match independently.
+  const taggedRegex = new RegExp(`(?:^|[\\s(\\[{>])(?:MEDIA|media):((?:\\/|~\\/)[^\\n"'()\\[\\],<>` + '`' + `]*?\\.(?:${exts}))(?=$|[\\s\\n"'()\\[\\],<>` + '`' + `]|[，。；;,.!?])`, 'g');
   let workingText = text;
   let taggedMatch: RegExpExecArray | null;
   while ((taggedMatch = taggedRegex.exec(text)) !== null) {
@@ -444,6 +451,26 @@ function extractImagesAsAttachedFiles(content: unknown): AttachedFileMeta[] {
           mimeType,
           fileSize: 0,
           preview: `data:${mimeType};base64,${block.data}`,
+        });
+      }
+      // Path 3: Flat URL form from Gateway-injected assistant-media messages.
+      // Shape: `{ type:'image', url:'/api/chat/media/outgoing/<sessionKey>/<id>/full',
+      //          mimeType, width, height, alt, openUrl }`. The URL is relative
+      // to the Gateway HTTP server which the renderer cannot reach directly
+      // (CORS / env drift). We surface it as an `_attachedFiles` entry whose
+      // preview is filled in later by `loadMissingPreviews` -> Main proxy.
+      else if (block.url) {
+        const mimeType = block.mimeType || 'image/jpeg';
+        const fileName = typeof block.alt === 'string' && block.alt
+          ? block.alt
+          : 'image';
+        files.push({
+          fileName,
+          mimeType,
+          fileSize: 0,
+          preview: null,
+          gatewayUrl: block.url,
+          source: 'gateway-media',
         });
       }
     }
@@ -568,8 +595,14 @@ function enrichWithToolResultFiles(messages: RawMessage[]): RawMessage[] {
       // Resolve file path from the matching tool call
       const matchedPath = msg.toolCallId ? toolCallPaths.get(msg.toolCallId) : undefined;
 
-      // 1. Image/file content blocks in the structured content array
-      const imageFiles = extractImagesAsAttachedFiles(msg.content);
+      // 1. Image/file content blocks in the structured content array.
+      //    Images embedded inside a tool result are the model's vision data
+      //    (e.g. `read /tmp/foo.png` re-encoded as JPEG so the model can
+      //    "see" the file) — they are NOT user-facing artifacts. The agent
+      //    surfaces user-facing images through `MEDIA:/path` text + the
+      //    Gateway's `assistant-media` injection.
+      const imageFiles = extractImagesAsAttachedFiles(msg.content)
+        .filter(file => !file.mimeType.startsWith('image/'));
       if (matchedPath) {
         for (const f of imageFiles) {
           if (!f.filePath) {
@@ -588,11 +621,14 @@ function enrichWithToolResultFiles(messages: RawMessage[]): RawMessage[] {
         for (const ref of mediaRefs) {
           pending.push(makeAttachedFile(ref, 'tool-result'));
         }
-        // 3. Raw file paths in tool result text (documents, audio, video, etc.)
+        // 3. Raw NON-image file paths in tool result text (documents,
+        //    audio, video, ...). Image paths from intermediate tool stdout
+        //    (`ls -la *.png`, `sips ... && ls`, `file /tmp/x.png`, etc.)
+        //    are deliberately ignored — see comment on Path 1.
         for (const ref of extractRawFilePaths(text)) {
-          if (!mediaRefPaths.has(ref.filePath)) {
-            pending.push(makeAttachedFile(ref, 'tool-result'));
-          }
+          if (mediaRefPaths.has(ref.filePath)) continue;
+          if (ref.mimeType.startsWith('image/')) continue;
+          pending.push(makeAttachedFile(ref, 'tool-result'));
         }
       }
 
@@ -625,12 +661,35 @@ function enrichWithToolResultFiles(messages: RawMessage[]): RawMessage[] {
  * Uses local cache for previews when available; missing previews are loaded async.
  */
 function enrichWithCachedImages(messages: RawMessage[]): RawMessage[] {
+  // Pre-compute, per index, whether the *next* assistant message is a
+  // Gateway-injected `assistant-media` bubble (i.e. has at least one
+  // `image` content block carrying a flat URL). When that bubble exists,
+  // the canonical user-facing rendering of the artifact is the bubble
+  // itself — anything the agent emitted via `MEDIA:/path` in its prior
+  // text turn would just duplicate the same image, so image-typed raw
+  // refs on that prior message are dropped here.
+  const nextHasGatewayMediaBubble = messages.map((_, idx) => {
+    const next = messages[idx + 1];
+    if (!next || next.role !== 'assistant') return false;
+    return extractImagesAsAttachedFiles(next.content).some(f => f.gatewayUrl);
+  });
+
   return messages.map((msg, idx) => {
     // Only process user and assistant messages. Messages may already carry
     // attachments from tool-result enrichment; still merge in raw paths from
     // the visible assistant text so `/path/to/report.xlsx` becomes a card.
     if (msg.role !== 'user' && msg.role !== 'assistant') return msg;
     const text = getMessageText(msg.content);
+
+    // Path 0: Gateway-injected outgoing media — `image` content blocks with
+    // a flat `url` field (e.g. `/api/chat/media/outgoing/<sessionKey>/<id>/full`).
+    // The renderer cannot fetch the URL directly, so we surface it as an
+    // `_attachedFiles` entry whose preview is filled in later by
+    // `loadMissingPreviews` -> Main `media:getThumbnails` (which dereferences
+    // the URL to the original file in `~/.openclaw/media/outgoing/`).
+    const gatewayMediaFiles: AttachedFileMeta[] = msg.role === 'assistant'
+      ? extractImagesAsAttachedFiles(msg.content).filter(file => file.gatewayUrl)
+      : [];
 
     // Path 1: [media attached: path (mime) | path] — guaranteed format from attachment button
     const mediaRefs = extractMediaRefs(text);
@@ -665,11 +724,21 @@ function enrichWithCachedImages(messages: RawMessage[]): RawMessage[] {
       }
     }
 
+    // Dedup vs Gateway-injected bubble: when the very next assistant
+    // message is an `assistant-media` bubble, drop image-typed raw refs
+    // on *this* message — the bubble already covers the artifact.
+    if (msg.role === 'assistant' && nextHasGatewayMediaBubble[idx]) {
+      rawRefs = rawRefs.filter(r => !r.mimeType.startsWith('image/'));
+    }
+
     const allRefs = [...mediaRefs, ...rawRefs];
-    if (allRefs.length === 0) return msg;
+    if (allRefs.length === 0 && gatewayMediaFiles.length === 0) return msg;
 
     const existingFiles = msg._attachedFiles || [];
     const existingPaths = new Set(existingFiles.map(file => file.filePath).filter(Boolean));
+    const existingGatewayUrls = new Set(
+      existingFiles.map(file => file.gatewayUrl).filter(Boolean) as string[],
+    );
     const files: AttachedFileMeta[] = allRefs
       .filter(ref => !existingPaths.has(ref.filePath))
       .map(ref => {
@@ -678,8 +747,11 @@ function enrichWithCachedImages(messages: RawMessage[]): RawMessage[] {
       const fileName = ref.filePath.split(/[\\/]/).pop() || 'file';
       return { fileName, mimeType: ref.mimeType, fileSize: 0, preview: null, filePath: ref.filePath, source: 'message-ref' };
     });
-    if (files.length === 0) return msg;
-    return { ...msg, _attachedFiles: [...existingFiles, ...files] };
+    const dedupedGatewayMedia = gatewayMediaFiles.filter(
+      file => file.gatewayUrl && !existingGatewayUrls.has(file.gatewayUrl),
+    );
+    if (files.length === 0 && dedupedGatewayMedia.length === 0) return msg;
+    return { ...msg, _attachedFiles: [...existingFiles, ...files, ...dedupedGatewayMedia] };
   });
 }
 
@@ -689,24 +761,34 @@ function enrichWithCachedImages(messages: RawMessage[]): RawMessage[] {
  * Handles both [media attached: ...] patterns and raw filePath entries.
  */
 async function loadMissingPreviews(messages: RawMessage[]): Promise<boolean> {
-  // Collect all image paths that need previews
-  const needPreview: Array<{ filePath: string; mimeType: string }> = [];
-  const seenPaths = new Set<string>();
+  // Collect all image refs that need previews. The IPC handler accepts:
+  //   - { filePath, mimeType }   — local on-disk files
+  //   - { gatewayUrl, mimeType } — Gateway-injected outgoing media; the
+  //                                handler resolves the URL to a local file
+  //                                via `~/.openclaw/media/outgoing/records/`.
+  // We use `filePath || gatewayUrl` as the dedupe / lookup key on the way
+  // back; a file always carries at most one of the two.
+  type PreviewRef = { filePath?: string; gatewayUrl?: string; mimeType: string };
+  const needPreview: PreviewRef[] = [];
+  const seenKeys = new Set<string>();
 
   for (const msg of messages) {
     if (!msg._attachedFiles) continue;
 
-    // Path 1: files with explicit filePath field (raw path detection or enriched refs)
+    // Path 1: files with explicit filePath OR gatewayUrl
     for (const file of msg._attachedFiles) {
-      const fp = file.filePath;
-      if (!fp || seenPaths.has(fp)) continue;
+      const key = file.filePath || file.gatewayUrl;
+      if (!key || seenKeys.has(key)) continue;
       // Images: need preview. Non-images: need file size (for FileCard display).
       const needsLoad = file.mimeType.startsWith('image/')
         ? !file.preview
         : file.fileSize === 0;
-      if (needsLoad) {
-        seenPaths.add(fp);
-        needPreview.push({ filePath: fp, mimeType: file.mimeType });
+      if (!needsLoad) continue;
+      seenKeys.add(key);
+      if (file.filePath) {
+        needPreview.push({ filePath: file.filePath, mimeType: file.mimeType });
+      } else if (file.gatewayUrl) {
+        needPreview.push({ gatewayUrl: file.gatewayUrl, mimeType: file.mimeType });
       }
     }
 
@@ -717,11 +799,11 @@ async function loadMissingPreviews(messages: RawMessage[]): Promise<boolean> {
       for (let i = 0; i < refs.length; i++) {
         const file = msg._attachedFiles[i];
         const ref = refs[i];
-        if (!file || !ref || seenPaths.has(ref.filePath)) continue;
+        if (!file || !ref || seenKeys.has(ref.filePath)) continue;
         const needsLoad = ref.mimeType.startsWith('image/') ? !file.preview : file.fileSize === 0;
         if (needsLoad) {
-          seenPaths.add(ref.filePath);
-          needPreview.push(ref);
+          seenKeys.add(ref.filePath);
+          needPreview.push({ filePath: ref.filePath, mimeType: ref.mimeType });
         }
       }
     }
@@ -739,15 +821,20 @@ async function loadMissingPreviews(messages: RawMessage[]): Promise<boolean> {
     for (const msg of messages) {
       if (!msg._attachedFiles) continue;
 
-      // Update files that have filePath
+      // Update files that have filePath OR gatewayUrl
       for (const file of msg._attachedFiles) {
-        const fp = file.filePath;
-        if (!fp) continue;
-        const thumb = thumbnails[fp];
+        const key = file.filePath || file.gatewayUrl;
+        if (!key) continue;
+        const thumb = thumbnails[key];
         if (thumb && (thumb.preview || thumb.fileSize)) {
           if (thumb.preview) file.preview = thumb.preview;
           if (thumb.fileSize) file.fileSize = thumb.fileSize;
-          _imageCache.set(fp, { ...file });
+          // Only persist local-path entries to the localStorage cache.
+          // Gateway outgoing URLs are tied to a specific session/attachment
+          // id and can be stale across runs, so caching is harmful.
+          if (file.filePath) {
+            _imageCache.set(file.filePath, { ...file });
+          }
           updated = true;
         }
       }
